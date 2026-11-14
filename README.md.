@@ -1,0 +1,44 @@
+# 🚌 CAMPUS BUS CONNECT
+
+### College Bus Information & Faculty Access Management System
+
+CAMPUS BUS CONNECT is a web-based college transportation portal designed to make bus information and faculty access management simple and organized.
+
+## 🎯 Problem Statement
+Managing college bus schedules and controlling access to restricted transportation information can be difficult. This application provides a centralized platform for viewing bus timings and managing faculty access requests.
+
+## ✨ Key Features
+
+- **Student Access:** View bus numbers, routes and timings.
+- **Two Shift Schedules:** Morning and afternoon bus timings.
+- **Faculty Requests:** Faculty can request access to restricted bus information.
+- **Approval System:** HOD or Director can approve or reject faculty requests.
+- **Bus Management:** TDC can add and update bus information.
+
+## 🛠️ Technology Stack
+
+- React
+- TypeScript
+- Tailwind CSS
+- Firebase Authentication
+- Cloud Firestore
+
+## 👥 User Roles
+
+| Role | Permissions |
+|---|---|
+| Student | View bus schedules |
+| Faculty | Request access to restricted information |
+| HOD / Director | Approve or reject requests |
+| TDC | Manage bus information |
+
+## 🚀 Project Goal
+
+To provide a simple, centralized and user-friendly college bus information system.
+
+## 🏆 Project Type
+Hackathon Prototype
+
+---
+
+**Developed as CAMPUS BUS CONNECT**
