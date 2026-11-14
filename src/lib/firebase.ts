@@ -3,11 +3,21 @@ import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { doc, getDocFromServer, getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
+if (!firebaseConfig?.apiKey || !firebaseConfig?.authDomain || !firebaseConfig?.projectId) {
+  throw new Error('Missing required Firebase configuration in firebase-applet-config.json.');
+}
+
+export const FIREBASE_PROJECT_ID = firebaseConfig.projectId;
+export const FIRESTORE_DATABASE_ID = firebaseConfig.firestoreDatabaseId;
+
 const app = initializeApp(firebaseConfig);
 
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
+
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope('email');
+googleProvider.addScope('profile');
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export enum OperationType {

@@ -4,7 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { FIELD_LIMITS, ROLE_LABELS, type UserRole } from '../types/campus';
 
 export function OnboardingPage() {
-  const { firebaseUser, preassigned, isAdminRecord, completeOnboarding, logout } = useAuth();
+  const { firebaseUser, preassigned, isAdminRecord, authError, completeOnboarding, logout } =
+    useAuth();
 
   const resolvedRole: UserRole = preassigned?.role
     ? preassigned.role
@@ -52,6 +53,8 @@ export function OnboardingPage() {
     }
   };
 
+  const displayError = error || authError;
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <header className="border-b border-slate-200 bg-white">
@@ -88,12 +91,12 @@ export function OnboardingPage() {
             </p>
           </div>
 
-          {error && (
+          {displayError && (
             <div
               role="alert"
-              className="bg-red-50 border border-red-200 text-red-800 text-xs rounded-lg p-3"
+              className="bg-red-50 border border-red-200 text-red-800 text-xs rounded-lg p-3 break-words"
             >
-              {error}
+              {displayError}
             </div>
           )}
 

@@ -84,20 +84,46 @@ service cloud.firestore {
     // ------------------------------------------------------------------
     // Validation Blueprints
     // ------------------------------------------------------------------
-    function isValidUserProfile(data) {
+    function isValidUserProfileCreate(data) {
       return data.keys().hasAll([
-          'uid', 'email', 'displayName', 'role', 'department', 'identifier', 'createdAt', 'updatedAt'
+          'uid', 'name', 'displayName', 'email', 'provider', 'role',
+          'department', 'identifier', 'createdAt', 'lastLoginAt', 'updatedAt'
         ]) &&
         data.keys().hasOnly([
-          'uid', 'email', 'displayName', 'role', 'department', 'identifier', 'createdAt', 'updatedAt'
+          'uid', 'name', 'displayName', 'email', 'provider', 'role',
+          'department', 'identifier', 'createdAt', 'lastLoginAt', 'updatedAt'
         ]) &&
         isValidId(data.uid) &&
-        data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
         data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+        data.provider is string && data.provider.size() >= 1 && data.provider.size() <= 40 &&
         data.role in ['student', 'faculty', 'hod', 'tdc'] &&
         data.department is string && data.department.size() <= 80 &&
         data.identifier is string && data.identifier.size() <= 40 &&
         data.createdAt is timestamp &&
+        data.lastLoginAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidUserProfileUpdate(data) {
+      return data.keys().hasAll([
+          'uid', 'email', 'displayName', 'role', 'department', 'identifier', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'uid', 'name', 'displayName', 'email', 'provider', 'role',
+          'department', 'identifier', 'createdAt', 'lastLoginAt', 'updatedAt'
+        ]) &&
+        isValidId(data.uid) &&
+        (!('name' in data) || (data.name is string && data.name.size() >= 1 && data.name.size() <= 100)) &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+        (!('provider' in data) || (data.provider is string && data.provider.size() >= 1 && data.provider.size() <= 40)) &&
+        data.role in ['student', 'faculty', 'hod', 'tdc'] &&
+        data.department is string && data.department.size() <= 80 &&
+        data.identifier is string && data.identifier.size() <= 40 &&
+        data.createdAt is timestamp &&
+        (!('lastLoginAt' in data) || data.lastLoginAt is timestamp) &&
         data.updatedAt is timestamp;
     }
 
@@ -216,10 +242,11 @@ service cloud.firestore {
       allow create: if isEmailVerified() &&
         isValidId(userId) &&
         userId == request.auth.uid &&
-        isValidUserProfile(incoming()) &&
+        isValidUserProfileCreate(incoming()) &&
         incoming().uid == request.auth.uid &&
         incoming().email == request.auth.token.email &&
         incoming().createdAt == request.time &&
+        incoming().lastLoginAt == request.time &&
         incoming().updatedAt == request.time &&
         (
           incoming().role == 'student' ||
@@ -229,7 +256,7 @@ service cloud.firestore {
 
       allow update: if isEmailVerified() &&
         isValidId(userId) &&
-        isValidUserProfile(incoming()) &&
+        isValidUserProfileUpdate(incoming()) &&
         incoming().uid == existing().uid &&
         incoming().email == existing().email &&
         incoming().createdAt == existing().createdAt &&
@@ -237,12 +264,17 @@ service cloud.firestore {
         (
           (
             isHod() &&
-            incoming().diff(existing()).affectedKeys().hasOnly(['role', 'department', 'identifier', 'displayName', 'updatedAt'])
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'role', 'department', 'identifier', 'name', 'displayName', 'updatedAt'
+            ])
           ) ||
           (
             request.auth.uid == userId &&
             incoming().role == existing().role &&
-            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'department', 'identifier', 'updatedAt'])
+            incoming().lastLoginAt == request.time &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'name', 'displayName', 'provider', 'department', 'identifier', 'lastLoginAt', 'updatedAt'
+            ])
           )
         );
 

@@ -17,6 +17,23 @@ import {
   type UserRole,
 } from '../types/campus';
 
+function formatTimestamp(ts: unknown): string {
+  if (!ts || typeof ts !== 'object') return '—';
+  const maybe = ts as { toDate?: () => Date; seconds?: number };
+  const date =
+    typeof maybe.toDate === 'function'
+      ? maybe.toDate()
+      : typeof maybe.seconds === 'number'
+        ? new Date(maybe.seconds * 1000)
+        : null;
+  if (!date || Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
 export function RoleDirectoryView() {
   const { firebaseUser } = useAuth();
   const { isDemoMode, demoUsers } = useDemo();
@@ -26,7 +43,9 @@ export function RoleDirectoryView() {
   const [role, setRole] = useState<UserRole>('tdc');
   const [department, setDepartment] = useState('Transport Office');
   const [saving, setSaving] = useState(false);
+  const [updatingUid, setUpdatingUid] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (isDemoMode) return;
@@ -42,6 +61,7 @@ export function RoleDirectoryView() {
     e.preventDefault();
     if (isDemoMode || !firebaseUser) return;
     setError(null);
+    setStatusMessage(null);
     if (!email.trim() || !email.includes('@')) {
       setError('Enter a valid institutional or Google email address.');
       return;
@@ -61,6 +81,7 @@ export function RoleDirectoryView() {
         await updateUserRole(existingUser.uid, role);
       }
       setEmail('');
+      setStatusMessage(`Assigned ${ROLE_LABELS[role]} role for ${normalizedEmail}.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to save role assignment.');
     } finally {
@@ -71,10 +92,15 @@ export function RoleDirectoryView() {
   const handleUserRoleChange = async (uid: string, nextRole: UserRole) => {
     if (isDemoMode) return;
     setError(null);
+    setStatusMessage(null);
+    setUpdatingUid(uid);
     try {
       await updateUserRole(uid, nextRole);
+      setStatusMessage(`Updated user role to ${ROLE_LABELS[nextRole]} in Firestore.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to update user role.');
+    } finally {
+      setUpdatingUid(null);
     }
   };
 
@@ -83,11 +109,11 @@ export function RoleDirectoryView() {
       <div className="space-y-6">
         <div className="space-y-1">
           <h2 className="font-display text-2xl font-bold text-slate-900">
-            Institutional Role Directory (Demo)
+            User Management (Demo)
           </h2>
           <p className="text-sm text-slate-600">
             Use the role switcher in the Demo Mode bar above to test Student, Faculty, HOD /
-            Director, and TDC permissions. Live Firebase role assignments are edited in Live Mode.
+            Director, and TDC permissions. Live Firebase users and roles are managed in Live Mode.
           </p>
         </div>
 
@@ -104,7 +130,7 @@ export function RoleDirectoryView() {
                 <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
                   <th className="py-3 px-4">Name</th>
                   <th className="py-3 px-4">Email</th>
-                  <th className="py-3 px-4">Department / ID</th>
+                  <th className="py-3 px-4">Provider</th>
                   <th className="py-3 px-4">Role</th>
                 </tr>
               </thead>
@@ -112,11 +138,11 @@ export function RoleDirectoryView() {
                 {demoUsers.map((u) => (
                   <tr key={u.uid}>
                     <td className="py-3 px-4 font-medium text-slate-900 whitespace-nowrap">
-                      {u.displayName}
+                      {u.name || u.displayName}
                     </td>
                     <td className="py-3 px-4 text-slate-600 whitespace-nowrap">{u.email}</td>
-                    <td className="py-3 px-4 text-xs text-slate-600 whitespace-nowrap">
-                      {u.department} · {u.identifier}
+                    <td className="py-3 px-4 text-xs font-mono text-slate-500 whitespace-nowrap">
+                      {u.provider || 'demo'}
                     </td>
                     <td className="py-3 px-4 text-xs font-semibold text-blue-700 whitespace-nowrap">
                       {ROLE_LABELS[u.role]}
@@ -134,12 +160,10 @@ export function RoleDirectoryView() {
   return (
     <div className="space-y-8">
       <div className="space-y-1">
-        <h2 className="font-display text-2xl font-bold text-slate-900">
-          Institutional Role Management
-        </h2>
+        <h2 className="font-display text-2xl font-bold text-slate-900">User Management</h2>
         <p className="text-sm text-slate-600">
-          Pre-assign TDC, HOD / Director, Faculty, or Student roles by email or update registered
-          user permissions.
+          View all registered Firebase users and securely assign Student, Faculty, TDC, or HOD /
+          Director roles in Firestore.
         </p>
       </div>
 
@@ -148,6 +172,80 @@ export function RoleDirectoryView() {
           {error}
         </div>
       )}
+
+      {statusMessage && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-lg p-3">
+          {statusMessage}
+        </div>
+      )}
+
+      {/* Registered Users Table */}
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Users className="w-4 h-4 text-slate-600" />
+            <h3 className="font-display text-base font-bold text-slate-900">
+              Registered Users ({users.length})
+            </h3>
+          </div>
+          <span className="text-xs text-slate-500">Admin-only Firestore directory</span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
+                <th className="py-3 px-4">Name</th>
+                <th className="py-3 px-4">Email & UID</th>
+                <th className="py-3 px-4">Provider</th>
+                <th className="py-3 px-4">Created</th>
+                <th className="py-3 px-4">Assigned Role</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-sm">
+              {users.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-6 px-4 text-center text-sm text-slate-500">
+                    No registered users found in Firestore yet.
+                  </td>
+                </tr>
+              ) : (
+                users.map((u) => (
+                  <tr key={u.uid} className="hover:bg-slate-50/70">
+                    <td className="py-3 px-4 font-medium text-slate-900 whitespace-nowrap">
+                      {u.name || u.displayName}
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <p className="text-slate-700">{u.email}</p>
+                      <p className="text-[11px] font-mono text-slate-400">{u.uid}</p>
+                    </td>
+                    <td className="py-3 px-4 text-xs font-mono text-slate-600 whitespace-nowrap">
+                      {u.provider || 'google.com'}
+                    </td>
+                    <td className="py-3 px-4 text-xs font-mono tabular-nums text-slate-500 whitespace-nowrap">
+                      {formatTimestamp(u.createdAt)}
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <select
+                        value={u.role}
+                        disabled={updatingUid === u.uid}
+                        onChange={(e) => handleUserRoleChange(u.uid, e.target.value as UserRole)}
+                        className="px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-md focus:outline-none focus:border-blue-700 disabled:opacity-60"
+                        aria-label={`Role for ${u.email}`}
+                      >
+                        <option value="student">Student</option>
+                        <option value="faculty">Faculty</option>
+                        <option value="tdc">TDC</option>
+                        <option value="hod">HOD / Director</option>
+                      </select>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       {/* Pre-assign Role Form */}
       <form
@@ -207,7 +305,7 @@ export function RoleDirectoryView() {
           disabled={saving}
           className="min-h-[40px] px-4 py-2 text-xs sm:text-sm font-semibold text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-60 rounded-lg cursor-pointer"
         >
-          {saving ? 'Saving...' : 'Save Pre-assignment'}
+          {saving ? 'Saving...' : 'Save Role Assignment'}
         </button>
 
         {assignments.length > 0 && (
@@ -240,55 +338,6 @@ export function RoleDirectoryView() {
           </div>
         )}
       </form>
-
-      {/* Registered Users Table */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-2">
-          <Users className="w-4 h-4 text-slate-600" />
-          <h3 className="font-display text-base font-bold text-slate-900">
-            Registered Portal Users ({users.length})
-          </h3>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
-                <th className="py-3 px-4">Name</th>
-                <th className="py-3 px-4">Email</th>
-                <th className="py-3 px-4">Department / ID</th>
-                <th className="py-3 px-4">Role</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 text-sm">
-              {users.map((u) => (
-                <tr key={u.uid} className="hover:bg-slate-50/70">
-                  <td className="py-3 px-4 font-medium text-slate-900 whitespace-nowrap">
-                    {u.displayName}
-                  </td>
-                  <td className="py-3 px-4 text-slate-600 whitespace-nowrap">{u.email}</td>
-                  <td className="py-3 px-4 text-xs text-slate-600 whitespace-nowrap">
-                    {u.department || '—'}
-                    {u.identifier ? ` · ${u.identifier}` : ''}
-                  </td>
-                  <td className="py-3 px-4 whitespace-nowrap">
-                    <select
-                      value={u.role}
-                      onChange={(e) => handleUserRoleChange(u.uid, e.target.value as UserRole)}
-                      className="px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-md focus:outline-none focus:border-blue-700"
-                    >
-                      <option value="student">Student</option>
-                      <option value="faculty">Faculty</option>
-                      <option value="tdc">TDC</option>
-                      <option value="hod">HOD / Director</option>
-                    </select>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
     </div>
   );
 }

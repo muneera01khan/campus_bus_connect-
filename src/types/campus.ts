@@ -7,6 +7,7 @@ export type FacultyRequestStatus = 'pending' | 'approved' | 'rejected';
 export const FIELD_LIMITS = {
   DISPLAY_NAME_MAX: 100,
   EMAIL_MAX: 160,
+  PROVIDER_MAX: 40,
   DEPARTMENT_MAX: 80,
   IDENTIFIER_MAX: 40,
   BUS_NUMBER_MAX: 32,
@@ -35,12 +36,15 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 
 export interface UserProfile {
   uid: string;
-  email: string;
+  name?: string;
   displayName: string;
+  email: string;
+  provider?: string;
   role: UserRole;
   department: string;
   identifier: string;
   createdAt?: unknown;
+  lastLoginAt?: unknown;
   updatedAt?: unknown;
 }
 

@@ -86,7 +86,7 @@ export function Layout({
     },
     {
       id: 'role_directory',
-      label: 'User Roles',
+      label: 'User Management',
       icon: <Users className="w-4 h-4 shrink-0" />,
       visible: role === 'hod',
     },

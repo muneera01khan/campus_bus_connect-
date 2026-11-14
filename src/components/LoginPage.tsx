@@ -108,7 +108,7 @@ export function LoginPage() {
               {authError && (
                 <div
                   role="alert"
-                  className="bg-red-50 border border-red-200 text-red-800 text-xs rounded-lg p-3 leading-relaxed"
+                  className="bg-red-50 border border-red-200 text-red-800 text-xs rounded-lg p-3 leading-relaxed break-words"
                 >
                   {authError}
                 </div>
@@ -144,8 +144,8 @@ export function LoginPage() {
 
               <div className="pt-4 border-t border-slate-100 text-xs text-slate-500 space-y-1">
                 <p>
-                  New accounts receive the default Student role unless assigned another role by an
-                  administrator.
+                  Every Google sign-in registers your account in Firestore with the default Student
+                  role unless assigned another role by an administrator.
                 </p>
                 <p>Demo Mode uses isolated sample data and never alters Firebase records.</p>
               </div>

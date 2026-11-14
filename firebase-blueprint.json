@@ -12,6 +12,18 @@
           "pattern": "^[a-zA-Z0-9_\\-]+$",
           "description": "Firebase Auth UID matching the document ID."
         },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Full name from Google authentication profile."
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Full display name of the user."
+        },
         "email": {
           "type": "string",
           "format": "email",
@@ -19,11 +31,11 @@
           "maxLength": 160,
           "description": "Verified college or Google email address."
         },
-        "displayName": {
+        "provider": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 100,
-          "description": "Full display name of the user."
+          "maxLength": 40,
+          "description": "Firebase Authentication provider ID (e.g., google.com)."
         },
         "role": {
           "type": "string",
@@ -47,13 +59,30 @@
           "format": "date-time",
           "description": "Server creation timestamp."
         },
+        "lastLoginAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of latest authenticated login."
+        },
         "updatedAt": {
           "type": "string",
           "format": "date-time",
           "description": "Server last-updated timestamp."
         }
       },
-      "required": ["uid", "email", "displayName", "role", "department", "identifier", "createdAt", "updatedAt"]
+      "required": [
+        "uid",
+        "name",
+        "displayName",
+        "email",
+        "provider",
+        "role",
+        "department",
+        "identifier",
+        "createdAt",
+        "lastLoginAt",
+        "updatedAt"
+      ]
     },
     "AdminRecord": {
       "title": "AdminRecord",

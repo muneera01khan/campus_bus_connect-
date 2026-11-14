@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
-import { auth, googleProvider } from '../lib/firebase';
+import { auth, FIREBASE_PROJECT_ID, googleProvider } from '../lib/firebase';
 import {
   checkIsAdminRecord,
   createUserProfile,
   getPreassignedRole,
   subscribeUserProfile,
+  syncUserOnLogin,
 } from '../services/userService';
 import { subscribeMyFacultyRequest } from '../services/requestService';
 import type {
@@ -35,6 +36,33 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function formatFirebaseAuthError(err: unknown): string {
+  const code =
+    typeof err === 'object' && err !== null && 'code' in err
+      ? String((err as { code?: unknown }).code ?? '')
+      : '';
+  const message = err instanceof Error ? err.message : 'Unable to sign in with Google.';
+
+  switch (code) {
+    case 'auth/popup-blocked':
+      return 'Sign-in popup was blocked by your browser. Please allow popups for this site and click Continue with Google again.';
+    case 'auth/popup-closed-by-user':
+      return 'Google sign-in popup was closed before sign-in completed. Please try again and choose an account.';
+    case 'auth/cancelled-popup-request':
+      return 'A previous sign-in popup was already open and was cancelled. Please click Continue with Google once.';
+    case 'auth/unauthorized-domain':
+      return `Domain "${window.location.hostname}" is not authorized for Firebase Authentication in project "${FIREBASE_PROJECT_ID}". Add it under Firebase Console → Authentication → Settings → Authorized domains.`;
+    case 'auth/operation-not-allowed':
+      return `Google Sign-In provider is disabled in Firebase Console for project "${FIREBASE_PROJECT_ID}". Enable Google under Authentication → Sign-in method.`;
+    case 'auth/network-request-failed':
+      return 'Network error while connecting to Google / Firebase Authentication. Please check your internet connection and retry.';
+    case 'auth/invalid-api-key':
+      return `Invalid Firebase API key configured for project "${FIREBASE_PROJECT_ID}".`;
+    default:
+      return code ? `${code}: ${message}` : message;
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -42,23 +70,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profileLoading, setProfileLoading] = useState(false);
   const [preassigned, setPreassigned] = useState<RoleAssignment | null>(null);
   const [isAdminRecord, setIsAdminRecord] = useState(false);
-  const [roleLookupReady, setRoleLookupReady] = useState(false);
+  const [syncReady, setSyncReady] = useState(false);
   const [myFacultyRequest, setMyFacultyRequest] = useState<FacultyAccessRequest | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      setFirebaseUser(user);
-      setAuthReady(true);
-      if (!user) {
-        setProfile(null);
-        setPreassigned(null);
-        setIsAdminRecord(false);
-        setRoleLookupReady(false);
-        setMyFacultyRequest(null);
-        setProfileLoading(false);
+    const unsub = onAuthStateChanged(
+      auth,
+      (user) => {
+        setFirebaseUser(user);
+        setAuthReady(true);
+        if (!user) {
+          setProfile(null);
+          setPreassigned(null);
+          setIsAdminRecord(false);
+          setSyncReady(false);
+          setMyFacultyRequest(null);
+          setProfileLoading(false);
+        }
+      },
+      (err) => {
+        console.error('Firebase Auth state error:', err);
+        setAuthError(formatFirebaseAuthError(err));
+        setAuthReady(true);
       }
-    });
+    );
     return () => unsub();
   }, []);
 
@@ -66,39 +102,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!authReady || !firebaseUser) return;
 
     setProfileLoading(true);
-    setRoleLookupReady(false);
+    setSyncReady(false);
     setAuthError(null);
     let active = true;
+    let unsubProfile: (() => void) | undefined;
 
-    const preassignPromise = firebaseUser.email
-      ? getPreassignedRole(firebaseUser.email).catch(() => null)
-      : Promise.resolve(null);
-    const adminPromise = checkIsAdminRecord(firebaseUser.uid).catch(() => false);
+    const initializeUserSession = async () => {
+      try {
+        const [assignment, adminExists] = await Promise.all([
+          firebaseUser.email
+            ? getPreassignedRole(firebaseUser.email).catch(() => null)
+            : Promise.resolve(null),
+          checkIsAdminRecord(firebaseUser.uid).catch(() => false),
+        ]);
 
-    Promise.all([preassignPromise, adminPromise]).then(([assignment, adminExists]) => {
-      if (!active) return;
-      setPreassigned(assignment);
-      setIsAdminRecord(adminExists);
-      setRoleLookupReady(true);
-    });
-
-    const unsubProfile = subscribeUserProfile(
-      firebaseUser.uid,
-      (loadedProfile) => {
         if (!active) return;
-        setProfile(loadedProfile);
-        setProfileLoading(false);
-      },
-      (err) => {
+        setPreassigned(assignment);
+        setIsAdminRecord(adminExists);
+
+        await syncUserOnLogin({
+          user: firebaseUser,
+          preassigned: assignment,
+          isAdminRecord: adminExists,
+        });
+
         if (!active) return;
-        setAuthError(err.message);
+        setSyncReady(true);
+
+        unsubProfile = subscribeUserProfile(
+          firebaseUser.uid,
+          (loadedProfile) => {
+            if (!active) return;
+            setProfile(loadedProfile);
+            setProfileLoading(false);
+          },
+          (err) => {
+            if (!active) return;
+            setAuthError(err.message);
+            setProfileLoading(false);
+          }
+        );
+      } catch (err) {
+        if (!active) return;
+        setAuthError(err instanceof Error ? err.message : 'Unable to sync user profile.');
+        setSyncReady(true);
         setProfileLoading(false);
       }
-    );
+    };
+
+    void initializeUserSession();
 
     return () => {
       active = false;
-      unsubProfile();
+      if (unsubProfile) unsubProfile();
     };
   }, [authReady, firebaseUser]);
 
@@ -120,12 +176,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginWithGoogle = async () => {
     setAuthError(null);
     try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unable to sign in with Google.';
-      if (!msg.includes('popup-closed-by-user')) {
-        setAuthError(msg);
+      const credential = await signInWithPopup(auth, googleProvider);
+      if (!credential?.user) {
+        setAuthError('Google sign-in did not return an authenticated user account.');
       }
+    } catch (err) {
+      console.error('Google Sign-In failed:', err);
+      setAuthError(formatFirebaseAuthError(err));
     }
   };
 
@@ -143,8 +200,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error('Verified Google email is required to register.');
     }
 
-    // Roles cannot be self-elevated: new users default to 'student' unless
-    // explicitly pre-assigned in /role_assignments or /admins in Firestore.
     const verifiedRole: UserRole = preassigned?.role
       ? preassigned.role
       : isAdminRecord
@@ -155,24 +210,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       uid: firebaseUser.uid,
       email: firebaseUser.email,
       displayName: params.displayName,
+      provider: firebaseUser.providerData[0]?.providerId || 'google.com',
       role: verifiedRole,
       department: params.department,
       identifier: params.identifier,
     });
   };
 
-  const effectiveProfile: UserProfile | null =
-    profile && isAdminRecord && profile.role !== 'hod'
-      ? { ...profile, role: 'hod' }
-      : profile;
-
   return (
     <AuthContext.Provider
       value={{
         firebaseUser,
         authReady,
-        profile: effectiveProfile,
-        profileLoading: profileLoading || (Boolean(firebaseUser) && !roleLookupReady),
+        profile,
+        profileLoading: profileLoading || (Boolean(firebaseUser) && !syncReady),
         preassigned,
         isAdminRecord,
         myFacultyRequest,

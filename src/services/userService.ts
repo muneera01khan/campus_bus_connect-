@@ -1,3 +1,4 @@
+import type { User } from 'firebase/auth';
 import {
   collection,
   deleteDoc,
@@ -70,23 +71,88 @@ export async function getPreassignedRole(email: string): Promise<RoleAssignment 
   }
 }
 
+export async function syncUserOnLogin(params: {
+  user: User;
+  preassigned: RoleAssignment | null;
+  isAdminRecord: boolean;
+}): Promise<void> {
+  const { user, preassigned, isAdminRecord } = params;
+  if (!user.email) {
+    throw new Error('Verified email address is required.');
+  }
+
+  const path = `users/${user.uid}`;
+  const userRef = doc(db, 'users', user.uid);
+  const cleanName =
+    sanitizeText(
+      user.displayName || user.email.split('@')[0] || 'Campus User',
+      FIELD_LIMITS.DISPLAY_NAME_MAX
+    ) || 'Campus User';
+  const cleanEmail = sanitizeText(user.email, FIELD_LIMITS.EMAIL_MAX);
+  const cleanProvider =
+    sanitizeText(user.providerData[0]?.providerId || 'google.com', FIELD_LIMITS.PROVIDER_MAX) ||
+    'google.com';
+
+  try {
+    const existingSnap = await getDoc(userRef);
+
+    if (!existingSnap.exists()) {
+      const assignedRole: UserRole = preassigned?.role
+        ? preassigned.role
+        : isAdminRecord
+          ? 'hod'
+          : 'student';
+
+      await setDoc(userRef, {
+        uid: user.uid,
+        name: cleanName,
+        displayName: cleanName,
+        email: cleanEmail,
+        provider: cleanProvider,
+        role: assignedRole,
+        department: sanitizeText(preassigned?.department ?? '', FIELD_LIMITS.DEPARTMENT_MAX),
+        identifier: '',
+        createdAt: serverTimestamp(),
+        lastLoginAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      // Never overwrite role, createdAt, email, department, or another user's profile
+      await updateDoc(userRef, {
+        name: cleanName,
+        displayName: cleanName,
+        provider: cleanProvider,
+        lastLoginAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
 export async function createUserProfile(params: {
   uid: string;
   email: string;
   displayName: string;
+  provider?: string;
   role: UserRole;
   department: string;
   identifier: string;
 }): Promise<void> {
   const path = `users/${params.uid}`;
+  const cleanName = sanitizeText(params.displayName, FIELD_LIMITS.DISPLAY_NAME_MAX) || 'Campus User';
   const payload = {
     uid: params.uid,
+    name: cleanName,
+    displayName: cleanName,
     email: sanitizeText(params.email, FIELD_LIMITS.EMAIL_MAX),
-    displayName: sanitizeText(params.displayName, FIELD_LIMITS.DISPLAY_NAME_MAX) || 'Campus User',
+    provider: sanitizeText(params.provider || 'google.com', FIELD_LIMITS.PROVIDER_MAX),
     role: params.role,
     department: sanitizeText(params.department, FIELD_LIMITS.DEPARTMENT_MAX),
     identifier: sanitizeText(params.identifier, FIELD_LIMITS.IDENTIFIER_MAX),
     createdAt: serverTimestamp(),
+    lastLoginAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
 
@@ -114,11 +180,15 @@ export function subscribeAllUsers(
   onError: (err: Error) => void
 ): Unsubscribe {
   const path = 'users';
-  const q = query(collection(db, 'users'), orderBy('displayName', 'asc'));
+  const q = query(collection(db, 'users'));
   return onSnapshot(
     q,
     (snapshot) => {
-      const items: UserProfile[] = snapshot.docs.map((d) => d.data() as UserProfile);
+      const items: UserProfile[] = snapshot.docs
+        .map((d) => d.data() as UserProfile)
+        .sort((a, b) =>
+          (a.name || a.displayName || a.email).localeCompare(b.name || b.displayName || b.email)
+        );
       onData(items);
     },
     (error) => {
