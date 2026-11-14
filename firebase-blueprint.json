@@ -1,0 +1,390 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated college member profile with assigned RBAC role.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID matching the document ID."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 160,
+          "description": "Verified college or Google email address."
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Full display name of the user."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["student", "faculty", "hod", "tdc"],
+          "description": "Assigned role governing dashboard access and Firestore permissions."
+        },
+        "department": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 80,
+          "description": "Academic department or transport office."
+        },
+        "identifier": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 40,
+          "description": "Roll number, employee ID, or coordinator ID."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last-updated timestamp."
+        }
+      },
+      "required": ["uid", "email", "displayName", "role", "department", "identifier", "createdAt", "updatedAt"]
+    },
+    "RoleAssignment": {
+      "title": "RoleAssignment",
+      "description": "Pre-approved role assignment keyed by lowercase email address, managed by HOD / Director.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 160,
+          "description": "Lowercase email address matching the document ID."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["student", "faculty", "hod", "tdc"],
+          "description": "Pre-assigned role to grant on registration."
+        },
+        "department": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 80,
+          "description": "Assigned department."
+        },
+        "assignedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID of the HOD/Director who created the assignment."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["email", "role", "department", "assignedBy", "createdAt", "updatedAt"]
+    },
+    "BusSchedule": {
+      "title": "BusSchedule",
+      "description": "Public college bus route and shift timing record readable by all authenticated users.",
+      "type": "object",
+      "properties": {
+        "busNumber": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "description": "College bus identifier (e.g., BUS-101)."
+        },
+        "routeName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120,
+          "description": "Primary route title."
+        },
+        "routeStops": {
+          "type": "array",
+          "description": "Ordered list of major route stops (max 15 stops)."
+        },
+        "morningPickupTime": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 24,
+          "description": "Morning shift first pickup departure time."
+        },
+        "morningCampusArrival": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 24,
+          "description": "Morning shift campus arrival time."
+        },
+        "afternoonCampusDeparture": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 24,
+          "description": "Afternoon shift departure time from campus."
+        },
+        "afternoonDropTime": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 24,
+          "description": "Afternoon shift final drop time."
+        },
+        "morningShiftActive": {
+          "type": "boolean",
+          "description": "Whether the morning shift operates for this bus."
+        },
+        "afternoonShiftActive": {
+          "type": "boolean",
+          "description": "Whether the afternoon shift operates for this bus."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "maintenance", "inactive"],
+          "description": "Operational schedule status."
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID of the TDC or HOD user who last modified the bus."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "busNumber",
+        "routeName",
+        "routeStops",
+        "morningPickupTime",
+        "morningCampusArrival",
+        "afternoonCampusDeparture",
+        "afternoonDropTime",
+        "morningShiftActive",
+        "afternoonShiftActive",
+        "status",
+        "updatedBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "BusRestrictedDetail": {
+      "title": "BusRestrictedDetail",
+      "description": "Restricted bus operations data (driver contacts, registration, permit, capacity) accessible only to HOD, TDC, and approved Faculty.",
+      "type": "object",
+      "properties": {
+        "busId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Matching BusSchedule document ID."
+        },
+        "busNumber": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "driverName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "driverContact": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 30
+        },
+        "conductorName": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 80
+        },
+        "conductorContact": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 30
+        },
+        "vehicleRegistration": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 32
+        },
+        "seatingCapacity": {
+          "type": "integer"
+        },
+        "permitNumber": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 50
+        },
+        "insuranceExpiry": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 30
+        },
+        "emergencyContact": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 40
+        },
+        "operationalNotes": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "busId",
+        "busNumber",
+        "driverName",
+        "driverContact",
+        "conductorName",
+        "conductorContact",
+        "vehicleRegistration",
+        "seatingCapacity",
+        "permitNumber",
+        "insuranceExpiry",
+        "emergencyContact",
+        "operationalNotes",
+        "updatedBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "FacultyAccessRequest": {
+      "title": "FacultyAccessRequest",
+      "description": "Request submitted by a Faculty member for access to restricted bus details, reviewed by HOD/Director.",
+      "type": "object",
+      "properties": {
+        "facultyUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "facultyName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "facultyEmail": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "department": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "employeeId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 500
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "approved", "rejected"]
+        },
+        "reviewedBy": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 128
+        },
+        "reviewerName": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 100
+        },
+        "reviewNote": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 300
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "facultyUid",
+        "facultyName",
+        "facultyEmail",
+        "department",
+        "employeeId",
+        "reason",
+        "status",
+        "reviewedBy",
+        "reviewerName",
+        "reviewNote",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profile and assigned role document."
+    },
+    "/role_assignments/{emailKey}": {
+      "schema": { "$ref": "#/entities/RoleAssignment" },
+      "description": "Pre-assigned roles by lowercase email managed by HOD/Director."
+    },
+    "/buses/{busId}": {
+      "schema": { "$ref": "#/entities/BusSchedule" },
+      "description": "Public bus routes and shift timings."
+    },
+    "/bus_details/{busId}": {
+      "schema": { "$ref": "#/entities/BusRestrictedDetail" },
+      "description": "Restricted detailed bus records gated behind HOD/TDC/approved Faculty permissions."
+    },
+    "/faculty_requests/{facultyUid}": {
+      "schema": { "$ref": "#/entities/FacultyAccessRequest" },
+      "description": "Faculty requests for detailed bus information access."
+    }
+  }
+}

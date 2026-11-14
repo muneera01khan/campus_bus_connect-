@@ -1,0 +1,6 @@
+{
+  "name": "CAMPUS BUS CONNECT",
+  "description": "College bus route, shift timing, and role-based transport administration portal.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

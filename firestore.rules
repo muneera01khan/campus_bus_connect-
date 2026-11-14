@@ -1,0 +1,398 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net (Default-Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ------------------------------------------------------------------
+    // Global Helpers
+    // ------------------------------------------------------------------
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidEmailKey(key) {
+      return key is string && key.size() >= 3 && key.size() <= 160 && key.matches('^[a-z0-9_.+\\-@]+$');
+    }
+
+    function isBootstrappedDirector() {
+      return isEmailVerified() && request.auth.token.email == 'muneerakhan251416@acropolis.in';
+    }
+
+    function hasUserProfile() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function currentUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isHod() {
+      return isEmailVerified() && (
+        (hasUserProfile() && currentUserRole() == 'hod') ||
+        (!hasUserProfile() && isBootstrappedDirector())
+      );
+    }
+
+    function isTdcOrHod() {
+      return isEmailVerified() && (
+        (hasUserProfile() && currentUserRole() in ['tdc', 'hod']) ||
+        (!hasUserProfile() && isBootstrappedDirector())
+      );
+    }
+
+    function isFacultyUser() {
+      return isEmailVerified() && hasUserProfile() && currentUserRole() == 'faculty';
+    }
+
+    function isApprovedFaculty() {
+      return isFacultyUser() &&
+        exists(/databases/$(database)/documents/faculty_requests/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/faculty_requests/$(request.auth.uid)).data.status == 'approved';
+    }
+
+    function canViewRestrictedBusDetails() {
+      return isTdcOrHod() || isApprovedFaculty();
+    }
+
+    // ------------------------------------------------------------------
+    // Validation Blueprints
+    // ------------------------------------------------------------------
+    function isValidUserProfile(data) {
+      return data.keys().hasAll([
+          'uid', 'email', 'displayName', 'role', 'department', 'identifier', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'uid', 'email', 'displayName', 'role', 'department', 'identifier', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.uid) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
+        data.role in ['student', 'faculty', 'hod', 'tdc'] &&
+        data.department is string && data.department.size() <= 80 &&
+        data.identifier is string && data.identifier.size() <= 40 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidRoleAssignment(data, emailKey) {
+      return data.keys().hasAll([
+          'email', 'role', 'department', 'assignedBy', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'email', 'role', 'department', 'assignedBy', 'createdAt', 'updatedAt'
+        ]) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+        data.email.lower() == emailKey &&
+        data.role in ['student', 'faculty', 'hod', 'tdc'] &&
+        data.department is string && data.department.size() <= 80 &&
+        isValidId(data.assignedBy) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidBusSchedule(data) {
+      return data.keys().hasAll([
+          'busNumber', 'routeName', 'routeStops',
+          'morningPickupTime', 'morningCampusArrival',
+          'afternoonCampusDeparture', 'afternoonDropTime',
+          'morningShiftActive', 'afternoonShiftActive',
+          'status', 'updatedBy', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'busNumber', 'routeName', 'routeStops',
+          'morningPickupTime', 'morningCampusArrival',
+          'afternoonCampusDeparture', 'afternoonDropTime',
+          'morningShiftActive', 'afternoonShiftActive',
+          'status', 'updatedBy', 'createdAt', 'updatedAt'
+        ]) &&
+        data.busNumber is string && data.busNumber.size() >= 1 && data.busNumber.size() <= 32 &&
+        data.routeName is string && data.routeName.size() >= 2 && data.routeName.size() <= 120 &&
+        data.routeStops is list && data.routeStops.size() <= 15 &&
+        (data.routeStops.size() == 0 || (data.routeStops[0] is string && data.routeStops[0].size() <= 80)) &&
+        data.morningPickupTime is string && data.morningPickupTime.size() <= 24 &&
+        data.morningCampusArrival is string && data.morningCampusArrival.size() <= 24 &&
+        data.afternoonCampusDeparture is string && data.afternoonCampusDeparture.size() <= 24 &&
+        data.afternoonDropTime is string && data.afternoonDropTime.size() <= 24 &&
+        data.morningShiftActive is bool &&
+        data.afternoonShiftActive is bool &&
+        data.status in ['active', 'maintenance', 'inactive'] &&
+        isValidId(data.updatedBy) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidBusDetail(data, busId) {
+      return data.keys().hasAll([
+          'busId', 'busNumber', 'driverName', 'driverContact',
+          'conductorName', 'conductorContact', 'vehicleRegistration',
+          'seatingCapacity', 'permitNumber', 'insuranceExpiry',
+          'emergencyContact', 'operationalNotes', 'updatedBy', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'busId', 'busNumber', 'driverName', 'driverContact',
+          'conductorName', 'conductorContact', 'vehicleRegistration',
+          'seatingCapacity', 'permitNumber', 'insuranceExpiry',
+          'emergencyContact', 'operationalNotes', 'updatedBy', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.busId) && data.busId == busId &&
+        data.busNumber is string && data.busNumber.size() >= 1 && data.busNumber.size() <= 32 &&
+        data.driverName is string && data.driverName.size() >= 1 && data.driverName.size() <= 80 &&
+        data.driverContact is string && data.driverContact.size() >= 3 && data.driverContact.size() <= 30 &&
+        data.conductorName is string && data.conductorName.size() <= 80 &&
+        data.conductorContact is string && data.conductorContact.size() <= 30 &&
+        data.vehicleRegistration is string && data.vehicleRegistration.size() >= 2 && data.vehicleRegistration.size() <= 32 &&
+        data.seatingCapacity is int && data.seatingCapacity >= 1 && data.seatingCapacity <= 120 &&
+        data.permitNumber is string && data.permitNumber.size() <= 50 &&
+        data.insuranceExpiry is string && data.insuranceExpiry.size() <= 30 &&
+        data.emergencyContact is string && data.emergencyContact.size() <= 40 &&
+        data.operationalNotes is string && data.operationalNotes.size() <= 500 &&
+        isValidId(data.updatedBy) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidFacultyRequest(data, facultyUid) {
+      return data.keys().hasAll([
+          'facultyUid', 'facultyName', 'facultyEmail', 'department',
+          'employeeId', 'reason', 'status', 'reviewedBy',
+          'reviewerName', 'reviewNote', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'facultyUid', 'facultyName', 'facultyEmail', 'department',
+          'employeeId', 'reason', 'status', 'reviewedBy',
+          'reviewerName', 'reviewNote', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.facultyUid) && data.facultyUid == facultyUid &&
+        data.facultyName is string && data.facultyName.size() >= 1 && data.facultyName.size() <= 100 &&
+        data.facultyEmail is string && data.facultyEmail.size() >= 3 && data.facultyEmail.size() <= 160 &&
+        data.department is string && data.department.size() >= 1 && data.department.size() <= 80 &&
+        data.employeeId is string && data.employeeId.size() >= 1 && data.employeeId.size() <= 40 &&
+        data.reason is string && data.reason.size() >= 5 && data.reason.size() <= 500 &&
+        data.status in ['pending', 'approved', 'rejected'] &&
+        data.reviewedBy is string && data.reviewedBy.size() <= 128 &&
+        data.reviewerName is string && data.reviewerName.size() <= 100 &&
+        data.reviewNote is string && data.reviewNote.size() <= 300 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    // ------------------------------------------------------------------
+    // 1. Users Collection (PII isolated to Owner + HOD)
+    // ------------------------------------------------------------------
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isHod());
+      allow list: if isHod();
+
+      allow create: if isEmailVerified() &&
+        isValidId(userId) &&
+        userId == request.auth.uid &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == request.auth.uid &&
+        incoming().email == request.auth.token.email &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        (
+          incoming().role in ['student', 'faculty'] ||
+          isBootstrappedDirector() ||
+          (
+            exists(/databases/$(database)/documents/role_assignments/$(request.auth.token.email.lower())) &&
+            get(/databases/$(database)/documents/role_assignments/$(request.auth.token.email.lower())).data.role == incoming().role
+          )
+        );
+
+      allow update: if isEmailVerified() &&
+        isValidId(userId) &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().email == existing().email &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          (
+            (isHod() || isBootstrappedDirector()) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['role', 'department', 'identifier', 'displayName', 'updatedAt'])
+          ) ||
+          (
+            request.auth.uid == userId &&
+            incoming().role == existing().role &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'department', 'identifier', 'updatedAt'])
+          )
+        );
+
+      allow delete: if false;
+    }
+
+    // ------------------------------------------------------------------
+    // 2. Role Assignments (HOD / Director managed pre-approvals)
+    // ------------------------------------------------------------------
+    match /role_assignments/{emailKey} {
+      allow get: if isEmailVerified() && isValidEmailKey(emailKey) && (
+        emailKey == request.auth.token.email.lower() || isHod() || isBootstrappedDirector()
+      );
+      allow list: if isHod() || isBootstrappedDirector();
+
+      allow create: if (isHod() || isBootstrappedDirector()) &&
+        isValidEmailKey(emailKey) &&
+        isValidRoleAssignment(incoming(), emailKey) &&
+        incoming().assignedBy == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if (isHod() || isBootstrappedDirector()) &&
+        isValidEmailKey(emailKey) &&
+        isValidRoleAssignment(incoming(), emailKey) &&
+        incoming().email == existing().email &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().assignedBy == request.auth.uid &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['role', 'department', 'assignedBy', 'updatedAt']);
+
+      allow delete: if (isHod() || isBootstrappedDirector()) && isValidEmailKey(emailKey);
+    }
+
+    // ------------------------------------------------------------------
+    // 3. Public Bus Schedules (/buses/{busId})
+    // ------------------------------------------------------------------
+    match /buses/{busId} {
+      allow get: if isSignedIn() && isValidId(busId) && hasUserProfile();
+      allow list: if isSignedIn() && resource.data.status in ['active', 'maintenance', 'inactive'];
+
+      allow create: if isTdcOrHod() &&
+        isValidId(busId) &&
+        isValidBusSchedule(incoming()) &&
+        incoming().updatedBy == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isTdcOrHod() &&
+        isValidId(busId) &&
+        isValidBusSchedule(incoming()) &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedBy == request.auth.uid &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'busNumber', 'routeName', 'routeStops',
+          'morningPickupTime', 'morningCampusArrival',
+          'afternoonCampusDeparture', 'afternoonDropTime',
+          'morningShiftActive', 'afternoonShiftActive',
+          'status', 'updatedBy', 'updatedAt'
+        ]);
+
+      allow delete: if isTdcOrHod() && isValidId(busId);
+    }
+
+    // ------------------------------------------------------------------
+    // 4. Restricted Bus Details (/bus_details/{busId})
+    // ------------------------------------------------------------------
+    match /bus_details/{busId} {
+      allow get: if isValidId(busId) && canViewRestrictedBusDetails();
+      allow list: if false;
+
+      allow create: if isTdcOrHod() &&
+        isValidId(busId) &&
+        isValidBusDetail(incoming(), busId) &&
+        (
+          exists(/databases/$(database)/documents/buses/$(busId)) ||
+          existsAfter(/databases/$(database)/documents/buses/$(busId))
+        ) &&
+        incoming().updatedBy == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isTdcOrHod() &&
+        isValidId(busId) &&
+        isValidBusDetail(incoming(), busId) &&
+        incoming().busId == existing().busId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedBy == request.auth.uid &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'busNumber', 'driverName', 'driverContact',
+          'conductorName', 'conductorContact', 'vehicleRegistration',
+          'seatingCapacity', 'permitNumber', 'insuranceExpiry',
+          'emergencyContact', 'operationalNotes', 'updatedBy', 'updatedAt'
+        ]);
+
+      allow delete: if isTdcOrHod() && isValidId(busId);
+    }
+
+    // ------------------------------------------------------------------
+    // 5. Faculty Access Requests (/faculty_requests/{facultyUid})
+    // ------------------------------------------------------------------
+    match /faculty_requests/{facultyUid} {
+      allow get: if isSignedIn() && isValidId(facultyUid) && (
+        request.auth.uid == facultyUid || isHod()
+      );
+      allow list: if isHod() || (isSignedIn() && resource.data.facultyUid == request.auth.uid);
+
+      allow create: if isFacultyUser() &&
+        isValidId(facultyUid) &&
+        facultyUid == request.auth.uid &&
+        isValidFacultyRequest(incoming(), facultyUid) &&
+        incoming().facultyEmail == request.auth.token.email &&
+        incoming().status == 'pending' &&
+        incoming().reviewedBy == '' &&
+        incoming().reviewerName == '' &&
+        incoming().reviewNote == '' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isEmailVerified() &&
+        isValidId(facultyUid) &&
+        isValidFacultyRequest(incoming(), facultyUid) &&
+        incoming().facultyUid == existing().facultyUid &&
+        incoming().facultyEmail == existing().facultyEmail &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          // Action 1: HOD / Director approves or rejects a request
+          (
+            isHod() &&
+            incoming().status in ['approved', 'rejected'] &&
+            incoming().reviewedBy == request.auth.uid &&
+            incoming().reviewerName.size() >= 1 &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'status', 'reviewedBy', 'reviewerName', 'reviewNote', 'updatedAt'
+            ])
+          ) ||
+          // Action 2: Faculty resubmits ONLY if previously rejected
+          (
+            isFacultyUser() &&
+            request.auth.uid == facultyUid &&
+            existing().status == 'rejected' &&
+            incoming().status == 'pending' &&
+            incoming().reviewedBy == '' &&
+            incoming().reviewerName == '' &&
+            incoming().reviewNote == '' &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'facultyName', 'department', 'employeeId', 'reason',
+              'status', 'reviewedBy', 'reviewerName', 'reviewNote', 'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if isHod() && isValidId(facultyUid);
+    }
+  }
+}
