@@ -98,61 +98,49 @@
     },
     "BusSchedule": {
       "title": "BusSchedule",
-      "description": "Public college bus route and shift timing record readable by all authenticated users.",
+      "description": "Public college bus route and two-shift college entry/exit timing record readable by all authenticated users.",
       "type": "object",
       "properties": {
         "busNumber": {
           "type": "string",
           "minLength": 1,
           "maxLength": 32,
-          "description": "College bus identifier (e.g., BUS-101)."
+          "description": "College bus identifier (e.g., G-01)."
         },
         "routeName": {
           "type": "string",
           "minLength": 2,
           "maxLength": 120,
-          "description": "Primary route title."
+          "description": "Bus route title (e.g., Indore to Campus)."
         },
-        "routeStops": {
-          "type": "array",
-          "description": "Ordered list of major route stops (max 15 stops)."
-        },
-        "morningPickupTime": {
+        "firstShiftEntry": {
           "type": "string",
-          "minLength": 0,
+          "minLength": 1,
           "maxLength": 24,
-          "description": "Morning shift first pickup departure time."
+          "description": "First Shift college entry time."
         },
-        "morningCampusArrival": {
+        "firstShiftExit": {
           "type": "string",
-          "minLength": 0,
+          "minLength": 1,
           "maxLength": 24,
-          "description": "Morning shift campus arrival time."
+          "description": "First Shift college exit time."
         },
-        "afternoonCampusDeparture": {
+        "secondShiftEntry": {
           "type": "string",
-          "minLength": 0,
+          "minLength": 1,
           "maxLength": 24,
-          "description": "Afternoon shift departure time from campus."
+          "description": "Second Shift college entry time."
         },
-        "afternoonDropTime": {
+        "secondShiftExit": {
           "type": "string",
-          "minLength": 0,
+          "minLength": 1,
           "maxLength": 24,
-          "description": "Afternoon shift final drop time."
-        },
-        "morningShiftActive": {
-          "type": "boolean",
-          "description": "Whether the morning shift operates for this bus."
-        },
-        "afternoonShiftActive": {
-          "type": "boolean",
-          "description": "Whether the afternoon shift operates for this bus."
+          "description": "Second Shift college exit time."
         },
         "status": {
           "type": "string",
           "enum": ["active", "maintenance", "inactive"],
-          "description": "Operational schedule status."
+          "description": "Operational bus status."
         },
         "updatedBy": {
           "type": "string",
@@ -173,13 +161,10 @@
       "required": [
         "busNumber",
         "routeName",
-        "routeStops",
-        "morningPickupTime",
-        "morningCampusArrival",
-        "afternoonCampusDeparture",
-        "afternoonDropTime",
-        "morningShiftActive",
-        "afternoonShiftActive",
+        "firstShiftEntry",
+        "firstShiftExit",
+        "secondShiftEntry",
+        "secondShiftExit",
         "status",
         "updatedBy",
         "createdAt",

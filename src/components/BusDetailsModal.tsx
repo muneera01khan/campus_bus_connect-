@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Lock, Phone, ShieldAlert, Truck, X } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { useDemo } from '../context/DemoContext';
 import { fetchRestrictedBusDetail } from '../services/busService';
 import type { BusRestrictedDetail, BusSchedule } from '../types/campus';
 
@@ -9,6 +11,9 @@ interface BusDetailsModalProps {
 }
 
 export function BusDetailsModal({ bus, onClose }: BusDetailsModalProps) {
+  const { profile, myFacultyRequest } = useAuth();
+  const { isDemoMode, demoRole, demoBusDetails, demoMyRequest } = useDemo();
+
   const [detail, setDetail] = useState<BusRestrictedDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -17,6 +22,23 @@ export function BusDetailsModal({ bus, onClose }: BusDetailsModalProps) {
     let active = true;
     setLoading(true);
     setError(null);
+
+    if (isDemoMode || bus.isDemo) {
+      const role = isDemoMode ? demoRole : profile?.role ?? 'student';
+      const approvedFaculty =
+        role === 'faculty' &&
+        (isDemoMode ? demoMyRequest?.status === 'approved' : myFacultyRequest?.status === 'approved');
+      const allowed = role === 'hod' || role === 'tdc' || approvedFaculty;
+
+      if (!allowed) {
+        setDetail(null);
+        setError('Access denied: Faculty approval from HOD / Director is required.');
+      } else {
+        setDetail(demoBusDetails[bus.id] ?? null);
+      }
+      setLoading(false);
+      return;
+    }
 
     fetchRestrictedBusDetail(bus.id)
       .then((data) => {
@@ -39,7 +61,16 @@ export function BusDetailsModal({ bus, onClose }: BusDetailsModalProps) {
     return () => {
       active = false;
     };
-  }, [bus.id]);
+  }, [
+    bus.id,
+    bus.isDemo,
+    isDemoMode,
+    demoRole,
+    demoBusDetails,
+    demoMyRequest?.status,
+    profile?.role,
+    myFacultyRequest?.status,
+  ]);
 
   return (
     <div
@@ -51,7 +82,9 @@ export function BusDetailsModal({ bus, onClose }: BusDetailsModalProps) {
       <div className="w-full max-w-xl bg-white border border-slate-200 rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-xs font-medium text-blue-700">Restricted Fleet Record</p>
+            <p className="text-xs font-medium text-blue-700">
+              {bus.isDemo ? 'Restricted Fleet Record (DEMO)' : 'Restricted Fleet Record'}
+            </p>
             <h2
               id="bus-detail-title"
               className="font-display text-lg font-bold text-slate-900 truncate"
@@ -70,30 +103,20 @@ export function BusDetailsModal({ bus, onClose }: BusDetailsModalProps) {
         </div>
 
         <div className="p-6 overflow-y-auto space-y-6">
-          {/* Route & Timing Summary */}
+          {/* Two-Shift Timing Summary */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-5 border-b border-slate-200 text-sm">
             <div>
-              <p className="text-xs font-medium text-slate-500">Morning Shift</p>
+              <p className="text-xs font-medium text-slate-500">First Shift</p>
               <p className="font-mono tabular-nums text-slate-900 font-medium mt-0.5">
-                {bus.morningShiftActive
-                  ? `${bus.morningPickupTime || '—'} → Campus ${bus.morningCampusArrival || '—'}`
-                  : 'Not Operating'}
+                Entry: {bus.firstShiftEntry || '—'} · Exit: {bus.firstShiftExit || '—'}
               </p>
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-500">Afternoon Shift</p>
+              <p className="text-xs font-medium text-slate-500">Second Shift</p>
               <p className="font-mono tabular-nums text-slate-900 font-medium mt-0.5">
-                {bus.afternoonShiftActive
-                  ? `Campus ${bus.afternoonCampusDeparture || '—'} → ${bus.afternoonDropTime || '—'}`
-                  : 'Not Operating'}
+                Entry: {bus.secondShiftEntry || '—'} · Exit: {bus.secondShiftExit || '—'}
               </p>
             </div>
-            {bus.routeStops.length > 0 && (
-              <div className="sm:col-span-2">
-                <p className="text-xs font-medium text-slate-500">Route Stops</p>
-                <p className="text-sm text-slate-800 mt-0.5">{bus.routeStops.join(' · ')}</p>
-              </div>
-            )}
           </div>
 
           {/* Restricted Details */}

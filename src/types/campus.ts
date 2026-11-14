@@ -11,8 +11,6 @@ export const FIELD_LIMITS = {
   IDENTIFIER_MAX: 40,
   BUS_NUMBER_MAX: 32,
   ROUTE_NAME_MAX: 120,
-  ROUTE_STOPS_MAX_COUNT: 15,
-  ROUTE_STOP_MAX_LEN: 80,
   TIME_MAX: 24,
   DRIVER_NAME_MAX: 80,
   CONTACT_MAX: 30,
@@ -60,15 +58,13 @@ export interface BusSchedule {
   id: string;
   busNumber: string;
   routeName: string;
-  routeStops: string[];
-  morningPickupTime: string;
-  morningCampusArrival: string;
-  afternoonCampusDeparture: string;
-  afternoonDropTime: string;
-  morningShiftActive: boolean;
-  afternoonShiftActive: boolean;
+  firstShiftEntry: string;
+  firstShiftExit: string;
+  secondShiftEntry: string;
+  secondShiftExit: string;
   status: BusStatus;
   updatedBy: string;
+  isDemo?: boolean;
   createdAt?: unknown;
   updatedAt?: unknown;
 }
@@ -109,13 +105,10 @@ export interface FacultyAccessRequest {
 export interface BusScheduleInput {
   busNumber: string;
   routeName: string;
-  routeStops: string[];
-  morningPickupTime: string;
-  morningCampusArrival: string;
-  afternoonCampusDeparture: string;
-  afternoonDropTime: string;
-  morningShiftActive: boolean;
-  afternoonShiftActive: boolean;
+  firstShiftEntry: string;
+  firstShiftExit: string;
+  secondShiftEntry: string;
+  secondShiftExit: string;
   status: BusStatus;
 }
 

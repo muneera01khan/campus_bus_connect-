@@ -113,29 +113,23 @@ service cloud.firestore {
 
     function isValidBusSchedule(data) {
       return data.keys().hasAll([
-          'busNumber', 'routeName', 'routeStops',
-          'morningPickupTime', 'morningCampusArrival',
-          'afternoonCampusDeparture', 'afternoonDropTime',
-          'morningShiftActive', 'afternoonShiftActive',
+          'busNumber', 'routeName',
+          'firstShiftEntry', 'firstShiftExit',
+          'secondShiftEntry', 'secondShiftExit',
           'status', 'updatedBy', 'createdAt', 'updatedAt'
         ]) &&
         data.keys().hasOnly([
-          'busNumber', 'routeName', 'routeStops',
-          'morningPickupTime', 'morningCampusArrival',
-          'afternoonCampusDeparture', 'afternoonDropTime',
-          'morningShiftActive', 'afternoonShiftActive',
+          'busNumber', 'routeName',
+          'firstShiftEntry', 'firstShiftExit',
+          'secondShiftEntry', 'secondShiftExit',
           'status', 'updatedBy', 'createdAt', 'updatedAt'
         ]) &&
         data.busNumber is string && data.busNumber.size() >= 1 && data.busNumber.size() <= 32 &&
         data.routeName is string && data.routeName.size() >= 2 && data.routeName.size() <= 120 &&
-        data.routeStops is list && data.routeStops.size() <= 15 &&
-        (data.routeStops.size() == 0 || (data.routeStops[0] is string && data.routeStops[0].size() <= 80)) &&
-        data.morningPickupTime is string && data.morningPickupTime.size() <= 24 &&
-        data.morningCampusArrival is string && data.morningCampusArrival.size() <= 24 &&
-        data.afternoonCampusDeparture is string && data.afternoonCampusDeparture.size() <= 24 &&
-        data.afternoonDropTime is string && data.afternoonDropTime.size() <= 24 &&
-        data.morningShiftActive is bool &&
-        data.afternoonShiftActive is bool &&
+        data.firstShiftEntry is string && data.firstShiftEntry.size() >= 1 && data.firstShiftEntry.size() <= 24 &&
+        data.firstShiftExit is string && data.firstShiftExit.size() >= 1 && data.firstShiftExit.size() <= 24 &&
+        data.secondShiftEntry is string && data.secondShiftEntry.size() >= 1 && data.secondShiftEntry.size() <= 24 &&
+        data.secondShiftExit is string && data.secondShiftExit.size() >= 1 && data.secondShiftExit.size() <= 24 &&
         data.status in ['active', 'maintenance', 'inactive'] &&
         isValidId(data.updatedBy) &&
         data.createdAt is timestamp &&
@@ -292,10 +286,9 @@ service cloud.firestore {
         incoming().updatedBy == request.auth.uid &&
         incoming().updatedAt == request.time &&
         incoming().diff(existing()).affectedKeys().hasOnly([
-          'busNumber', 'routeName', 'routeStops',
-          'morningPickupTime', 'morningCampusArrival',
-          'afternoonCampusDeparture', 'afternoonDropTime',
-          'morningShiftActive', 'afternoonShiftActive',
+          'busNumber', 'routeName',
+          'firstShiftEntry', 'firstShiftExit',
+          'secondShiftEntry', 'secondShiftExit',
           'status', 'updatedBy', 'updatedAt'
         ]);
 

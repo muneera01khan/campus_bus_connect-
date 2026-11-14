@@ -1,9 +1,11 @@
-import { Bus, Clock, FileCheck2, ShieldCheck } from 'lucide-react';
+import { Bus, Clock, FileCheck2, FlaskConical, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useDemo } from '../context/DemoContext';
 
 export function LoginPage() {
   const { loginWithGoogle, authError } = useAuth();
+  const { enterDemoMode } = useDemo();
   const [signingIn, setSigningIn] = useState(false);
 
   const handleSignIn = async () => {
@@ -51,8 +53,8 @@ export function LoginPage() {
                   <span>Students</span>
                 </div>
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  Read-only access to bus numbers, route stops, morning and afternoon shifts, and
-                  campus timings.
+                  Read-only access to bus numbers, routes, First Shift and Second Shift college
+                  entry/exit timings, and bus status.
                 </p>
               </div>
 
@@ -84,15 +86,15 @@ export function LoginPage() {
                   <span>TDC</span>
                 </div>
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  Add buses, update routes and campus timings, and manage morning and afternoon
-                  shifts.
+                  Add buses, update routes, and manage First Shift and Second Shift college entry
+                  and exit timings.
                 </p>
               </div>
             </div>
           </section>
 
           <section className="lg:col-span-5 flex items-center">
-            <div className="w-full bg-white border border-slate-200 rounded-xl p-8 space-y-6">
+            <div className="w-full bg-white border border-slate-200 rounded-xl p-8 space-y-5">
               <div className="space-y-2">
                 <h2 className="font-display text-xl font-bold text-slate-900">
                   Sign in to continue
@@ -112,26 +114,37 @@ export function LoginPage() {
                 </div>
               )}
 
-              <button
-                type="button"
-                onClick={handleSignIn}
-                disabled={signingIn}
-                className="w-full min-h-[44px] px-4 py-2.5 bg-blue-700 hover:bg-blue-800 disabled:opacity-60 text-white text-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-2.5 cursor-pointer"
-              >
-                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    fill="currentColor"
-                    d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27c3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10c5.35 0 9.25-3.67 9.25-9.09c0-1.15-.15-1.81-.15-1.81Z"
-                  />
-                </svg>
-                <span className="whitespace-nowrap">
-                  {signingIn ? 'Signing in...' : 'Continue with Google'}
-                </span>
-              </button>
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={handleSignIn}
+                  disabled={signingIn}
+                  className="w-full min-h-[44px] px-4 py-2.5 bg-blue-700 hover:bg-blue-800 disabled:opacity-60 text-white text-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-2.5 cursor-pointer"
+                >
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      fill="currentColor"
+                      d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27c3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10c5.35 0 9.25-3.67 9.25-9.09c0-1.15-.15-1.81-.15-1.81Z"
+                    />
+                  </svg>
+                  <span className="whitespace-nowrap">
+                    {signingIn ? 'Signing in...' : 'Continue with Google'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => enterDemoMode('student')}
+                  className="w-full min-h-[44px] px-4 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <FlaskConical className="w-4 h-4 shrink-0" />
+                  <span className="whitespace-nowrap">Try Hackathon Demo Mode</span>
+                </button>
+              </div>
 
               <div className="pt-4 border-t border-slate-100 text-xs text-slate-500 space-y-1">
                 <p>First-time users will select their Student or Faculty role after sign-in.</p>
-                <p>HOD / Director and TDC accounts are verified by role assignment.</p>
+                <p>Demo Mode uses isolated sample data and never alters Firebase records.</p>
               </div>
             </div>
           </section>

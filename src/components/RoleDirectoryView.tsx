@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Trash2, UserPlus, Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useDemo } from '../context/DemoContext';
 import {
   deleteRoleAssignment,
   saveRoleAssignment,
@@ -18,6 +19,7 @@ import {
 
 export function RoleDirectoryView() {
   const { firebaseUser } = useAuth();
+  const { isDemoMode, demoUsers } = useDemo();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [assignments, setAssignments] = useState<RoleAssignment[]>([]);
   const [email, setEmail] = useState('');
@@ -27,17 +29,18 @@ export function RoleDirectoryView() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (isDemoMode) return;
     const unsubUsers = subscribeAllUsers(setUsers, (err) => setError(err.message));
     const unsubAssign = subscribeRoleAssignments(setAssignments, (err) => setError(err.message));
     return () => {
       unsubUsers();
       unsubAssign();
     };
-  }, []);
+  }, [isDemoMode]);
 
   const handleAssignSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!firebaseUser) return;
+    if (isDemoMode || !firebaseUser) return;
     setError(null);
     if (!email.trim() || !email.includes('@')) {
       setError('Enter a valid institutional or Google email address.');
@@ -61,6 +64,7 @@ export function RoleDirectoryView() {
   };
 
   const handleUserRoleChange = async (uid: string, nextRole: UserRole) => {
+    if (isDemoMode) return;
     setError(null);
     try {
       await updateUserRole(uid, nextRole);
@@ -68,6 +72,59 @@ export function RoleDirectoryView() {
       setError(err instanceof Error ? err.message : 'Unable to update user role.');
     }
   };
+
+  if (isDemoMode) {
+    return (
+      <div className="space-y-6">
+        <div className="space-y-1">
+          <h2 className="font-display text-2xl font-bold text-slate-900">
+            Institutional Role Directory (Demo)
+          </h2>
+          <p className="text-sm text-slate-600">
+            Use the role switcher in the Demo Mode bar above to test Student, Faculty, HOD /
+            Director, and TDC permissions. Live Firebase role assignments are edited in Live Mode.
+          </p>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-2">
+            <Users className="w-4 h-4 text-slate-600" />
+            <h3 className="font-display text-base font-bold text-slate-900">
+              Demo Accounts ({demoUsers.length})
+            </h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
+                  <th className="py-3 px-4">Name</th>
+                  <th className="py-3 px-4">Email</th>
+                  <th className="py-3 px-4">Department / ID</th>
+                  <th className="py-3 px-4">Role</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 text-sm">
+                {demoUsers.map((u) => (
+                  <tr key={u.uid}>
+                    <td className="py-3 px-4 font-medium text-slate-900 whitespace-nowrap">
+                      {u.displayName}
+                    </td>
+                    <td className="py-3 px-4 text-slate-600 whitespace-nowrap">{u.email}</td>
+                    <td className="py-3 px-4 text-xs text-slate-600 whitespace-nowrap">
+                      {u.department} · {u.identifier}
+                    </td>
+                    <td className="py-3 px-4 text-xs font-semibold text-blue-700 whitespace-nowrap">
+                      {ROLE_LABELS[u.role]}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">

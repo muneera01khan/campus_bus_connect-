@@ -23,13 +23,6 @@ function sanitizeText(value: string, maxLength: number): string {
   return value.trim().slice(0, maxLength);
 }
 
-function sanitizeStops(stops: string[]): string[] {
-  return stops
-    .map((s) => sanitizeText(s, FIELD_LIMITS.ROUTE_STOP_MAX_LEN))
-    .filter((s) => s.length > 0)
-    .slice(0, FIELD_LIMITS.ROUTE_STOPS_MAX_COUNT);
-}
-
 export function subscribeBusSchedules(
   onData: (buses: BusSchedule[]) => void,
   onError: (err: Error) => void
@@ -84,18 +77,14 @@ export async function saveBusRecord(params: {
 
   const busNumber = sanitizeText(params.schedule.busNumber, FIELD_LIMITS.BUS_NUMBER_MAX);
   const routeName = sanitizeText(params.schedule.routeName, FIELD_LIMITS.ROUTE_NAME_MAX);
-  const routeStops = sanitizeStops(params.schedule.routeStops);
 
   const scheduleFields = {
     busNumber,
     routeName,
-    routeStops,
-    morningPickupTime: sanitizeText(params.schedule.morningPickupTime, FIELD_LIMITS.TIME_MAX),
-    morningCampusArrival: sanitizeText(params.schedule.morningCampusArrival, FIELD_LIMITS.TIME_MAX),
-    afternoonCampusDeparture: sanitizeText(params.schedule.afternoonCampusDeparture, FIELD_LIMITS.TIME_MAX),
-    afternoonDropTime: sanitizeText(params.schedule.afternoonDropTime, FIELD_LIMITS.TIME_MAX),
-    morningShiftActive: Boolean(params.schedule.morningShiftActive),
-    afternoonShiftActive: Boolean(params.schedule.afternoonShiftActive),
+    firstShiftEntry: sanitizeText(params.schedule.firstShiftEntry, FIELD_LIMITS.TIME_MAX),
+    firstShiftExit: sanitizeText(params.schedule.firstShiftExit, FIELD_LIMITS.TIME_MAX),
+    secondShiftEntry: sanitizeText(params.schedule.secondShiftEntry, FIELD_LIMITS.TIME_MAX),
+    secondShiftExit: sanitizeText(params.schedule.secondShiftExit, FIELD_LIMITS.TIME_MAX),
     status: params.schedule.status,
     updatedBy: params.updatedBy,
     updatedAt: serverTimestamp(),
@@ -113,7 +102,10 @@ export async function saveBusRecord(params: {
     driverContact: sanitizeText(params.detail.driverContact, FIELD_LIMITS.CONTACT_MAX),
     conductorName: sanitizeText(params.detail.conductorName, FIELD_LIMITS.DRIVER_NAME_MAX),
     conductorContact: sanitizeText(params.detail.conductorContact, FIELD_LIMITS.CONTACT_MAX),
-    vehicleRegistration: sanitizeText(params.detail.vehicleRegistration, FIELD_LIMITS.REGISTRATION_MAX),
+    vehicleRegistration: sanitizeText(
+      params.detail.vehicleRegistration,
+      FIELD_LIMITS.REGISTRATION_MAX
+    ),
     seatingCapacity,
     permitNumber: sanitizeText(params.detail.permitNumber, FIELD_LIMITS.PERMIT_MAX),
     insuranceExpiry: sanitizeText(params.detail.insuranceExpiry, FIELD_LIMITS.INSURANCE_MAX),
@@ -146,23 +138,19 @@ export async function saveBusRecord(params: {
 
 export async function updateBusShifts(params: {
   busId: string;
-  morningShiftActive: boolean;
-  afternoonShiftActive: boolean;
-  morningPickupTime: string;
-  morningCampusArrival: string;
-  afternoonCampusDeparture: string;
-  afternoonDropTime: string;
+  firstShiftEntry: string;
+  firstShiftExit: string;
+  secondShiftEntry: string;
+  secondShiftExit: string;
   updatedBy: string;
 }): Promise<void> {
   const path = `buses/${params.busId}`;
   try {
     await updateDoc(doc(db, 'buses', params.busId), {
-      morningShiftActive: Boolean(params.morningShiftActive),
-      afternoonShiftActive: Boolean(params.afternoonShiftActive),
-      morningPickupTime: sanitizeText(params.morningPickupTime, FIELD_LIMITS.TIME_MAX),
-      morningCampusArrival: sanitizeText(params.morningCampusArrival, FIELD_LIMITS.TIME_MAX),
-      afternoonCampusDeparture: sanitizeText(params.afternoonCampusDeparture, FIELD_LIMITS.TIME_MAX),
-      afternoonDropTime: sanitizeText(params.afternoonDropTime, FIELD_LIMITS.TIME_MAX),
+      firstShiftEntry: sanitizeText(params.firstShiftEntry, FIELD_LIMITS.TIME_MAX),
+      firstShiftExit: sanitizeText(params.firstShiftExit, FIELD_LIMITS.TIME_MAX),
+      secondShiftEntry: sanitizeText(params.secondShiftEntry, FIELD_LIMITS.TIME_MAX),
+      secondShiftExit: sanitizeText(params.secondShiftExit, FIELD_LIMITS.TIME_MAX),
       updatedBy: params.updatedBy,
       updatedAt: serverTimestamp(),
     });

@@ -108,7 +108,7 @@ export const DIRTY_DOZEN_CASES: AdversarialTestCase[] = [
     actorRole: 'student',
     operation: 'update',
     targetPath: '/buses/bus_101',
-    payload: { morningPickupTime: '09:00 AM' },
+    payload: { firstShiftEntry: '09:00 AM' },
     expectedOutcome: 'PERMISSION_DENIED',
     enforcingGate: 'isTdcOrHod() required for write on /buses/{busId}',
   },

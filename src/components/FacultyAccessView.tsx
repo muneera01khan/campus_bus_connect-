@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { CheckCircle2, Clock, Lock, Send, ShieldAlert, XCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useDemo } from '../context/DemoContext';
 import { fetchRestrictedBusDetail } from '../services/busService';
 import { submitFacultyRequest } from '../services/requestService';
 import {
@@ -15,14 +16,24 @@ interface FacultyAccessViewProps {
 
 export function FacultyAccessView({ buses }: FacultyAccessViewProps) {
   const { firebaseUser, profile, myFacultyRequest } = useAuth();
+  const {
+    isDemoMode,
+    demoProfile,
+    demoMyRequest,
+    demoBusDetails,
+    submitDemoFacultyRequest,
+  } = useDemo();
+
+  const activeProfile = isDemoMode ? demoProfile : profile;
+  const activeRequest = isDemoMode ? demoMyRequest : myFacultyRequest;
 
   const [department, setDepartment] = useState(
-    myFacultyRequest?.department || profile?.department || ''
+    activeRequest?.department || activeProfile?.department || ''
   );
   const [employeeId, setEmployeeId] = useState(
-    myFacultyRequest?.employeeId || profile?.identifier || ''
+    activeRequest?.employeeId || activeProfile?.identifier || ''
   );
-  const [reason, setReason] = useState(myFacultyRequest?.reason || '');
+  const [reason, setReason] = useState(activeRequest?.reason || '');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -31,22 +42,37 @@ export function FacultyAccessView({ buses }: FacultyAccessViewProps) {
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [detailsError, setDetailsError] = useState<string | null>(null);
 
-  const status = myFacultyRequest?.status;
+  const status = activeRequest?.status;
   const isApproved = status === 'approved';
   const isPending = status === 'pending';
   const isRejected = status === 'rejected';
 
   useEffect(() => {
-    if (myFacultyRequest) {
-      setDepartment(myFacultyRequest.department);
-      setEmployeeId(myFacultyRequest.employeeId);
-      setReason(myFacultyRequest.reason);
+    if (activeRequest) {
+      setDepartment(activeRequest.department);
+      setEmployeeId(activeRequest.employeeId);
+      setReason(activeRequest.reason);
+    } else if (activeProfile) {
+      setDepartment(activeProfile.department);
+      setEmployeeId(activeProfile.identifier);
+      setReason('');
     }
-  }, [myFacultyRequest]);
+  }, [activeRequest, activeProfile]);
 
   useEffect(() => {
     if (!isApproved || buses.length === 0) {
       setDetailsMap({});
+      return;
+    }
+
+    if (isDemoMode) {
+      const map: Record<string, BusRestrictedDetail | null> = {};
+      for (const bus of buses) {
+        map[bus.id] = demoBusDetails[bus.id] ?? null;
+      }
+      setDetailsMap(map);
+      setLoadingDetails(false);
+      setDetailsError(null);
       return;
     }
 
@@ -78,11 +104,12 @@ export function FacultyAccessView({ buses }: FacultyAccessViewProps) {
     return () => {
       active = false;
     };
-  }, [isApproved, buses]);
+  }, [isApproved, buses, isDemoMode, demoBusDetails]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!firebaseUser || !profile) return;
+    if (!activeProfile) return;
+    if (!isDemoMode && !firebaseUser) return;
     setError(null);
     setSuccessMessage(null);
 
@@ -93,15 +120,26 @@ export function FacultyAccessView({ buses }: FacultyAccessViewProps) {
 
     setSubmitting(true);
     try {
-      await submitFacultyRequest({
-        facultyUid: firebaseUser.uid,
-        facultyName: profile.displayName,
-        facultyEmail: profile.email,
-        department,
-        employeeId: employeeId || 'FAC-STAFF',
-        reason,
-        isResubmit: Boolean(myFacultyRequest && isRejected),
-      });
+      if (isDemoMode) {
+        submitDemoFacultyRequest({
+          facultyUid: activeProfile.uid,
+          facultyName: activeProfile.displayName,
+          facultyEmail: activeProfile.email,
+          department,
+          employeeId: employeeId || 'FAC-STAFF',
+          reason,
+        });
+      } else if (firebaseUser) {
+        await submitFacultyRequest({
+          facultyUid: firebaseUser.uid,
+          facultyName: activeProfile.displayName,
+          facultyEmail: activeProfile.email,
+          department,
+          employeeId: employeeId || 'FAC-STAFF',
+          reason,
+          isResubmit: Boolean(activeRequest && isRejected),
+        });
+      }
       setSuccessMessage('Access request submitted for HOD / Director review.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not submit access request.');

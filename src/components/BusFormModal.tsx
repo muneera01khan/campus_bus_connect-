@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useDemo } from '../context/DemoContext';
 import { fetchRestrictedBusDetail, saveBusRecord } from '../services/busService';
 import {
   FIELD_LIMITS,
@@ -15,28 +16,22 @@ interface BusFormModalProps {
 
 export function BusFormModal({ existingBus, onClose }: BusFormModalProps) {
   const { firebaseUser } = useAuth();
+  const { isDemoMode, demoProfile, demoBusDetails, saveDemoBus } = useDemo();
   const isEditing = Boolean(existingBus);
 
   const [busNumber, setBusNumber] = useState(existingBus?.busNumber ?? '');
   const [routeName, setRouteName] = useState(existingBus?.routeName ?? '');
-  const [stopsText, setStopsText] = useState(existingBus?.routeStops.join(', ') ?? '');
-  const [morningShiftActive, setMorningShiftActive] = useState(
-    existingBus?.morningShiftActive ?? true
+  const [firstShiftEntry, setFirstShiftEntry] = useState(
+    existingBus?.firstShiftEntry ?? '08:00 AM'
   );
-  const [morningPickupTime, setMorningPickupTime] = useState(
-    existingBus?.morningPickupTime ?? '07:15 AM'
+  const [firstShiftExit, setFirstShiftExit] = useState(
+    existingBus?.firstShiftExit ?? '02:40 PM'
   );
-  const [morningCampusArrival, setMorningCampusArrival] = useState(
-    existingBus?.morningCampusArrival ?? '08:20 AM'
+  const [secondShiftEntry, setSecondShiftEntry] = useState(
+    existingBus?.secondShiftEntry ?? '10:30 AM'
   );
-  const [afternoonShiftActive, setAfternoonShiftActive] = useState(
-    existingBus?.afternoonShiftActive ?? true
-  );
-  const [afternoonCampusDeparture, setAfternoonCampusDeparture] = useState(
-    existingBus?.afternoonCampusDeparture ?? '04:30 PM'
-  );
-  const [afternoonDropTime, setAfternoonDropTime] = useState(
-    existingBus?.afternoonDropTime ?? '05:35 PM'
+  const [secondShiftExit, setSecondShiftExit] = useState(
+    existingBus?.secondShiftExit ?? '05:35 PM'
   );
   const [status, setStatus] = useState<BusStatus>(existingBus?.status ?? 'active');
 
@@ -60,6 +55,25 @@ export function BusFormModal({ existingBus, onClose }: BusFormModalProps) {
     if (!existingBus) return;
     let active = true;
     setLoadingDetails(true);
+
+    if (isDemoMode || existingBus.isDemo) {
+      const detail = demoBusDetails[existingBus.id];
+      if (detail) {
+        setDriverName(detail.driverName);
+        setDriverContact(detail.driverContact);
+        setConductorName(detail.conductorName);
+        setConductorContact(detail.conductorContact);
+        setVehicleRegistration(detail.vehicleRegistration);
+        setSeatingCapacity(String(detail.seatingCapacity));
+        setPermitNumber(detail.permitNumber);
+        setInsuranceExpiry(detail.insuranceExpiry);
+        setEmergencyContact(detail.emergencyContact);
+        setOperationalNotes(detail.operationalNotes);
+      }
+      setLoadingDetails(false);
+      return;
+    }
+
     fetchRestrictedBusDetail(existingBus.id)
       .then((detail) => {
         if (!active) return;
@@ -84,15 +98,25 @@ export function BusFormModal({ existingBus, onClose }: BusFormModalProps) {
     return () => {
       active = false;
     };
-  }, [existingBus]);
+  }, [existingBus, isDemoMode, demoBusDetails]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!firebaseUser) return;
+    const actorUid = isDemoMode ? demoProfile.uid : firebaseUser?.uid;
+    if (!actorUid) return;
     setError(null);
 
     if (!busNumber.trim() || !routeName.trim()) {
-      setError('Bus number and route name are required.');
+      setError('Bus number and route are required.');
+      return;
+    }
+    if (
+      !firstShiftEntry.trim() ||
+      !firstShiftExit.trim() ||
+      !secondShiftEntry.trim() ||
+      !secondShiftExit.trim()
+    ) {
+      setError('First Shift and Second Shift entry and exit timings are required.');
       return;
     }
     if (!driverName.trim() || !driverContact.trim() || !vehicleRegistration.trim()) {
@@ -100,42 +124,46 @@ export function BusFormModal({ existingBus, onClose }: BusFormModalProps) {
       return;
     }
 
-    const parsedStops = stopsText
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .slice(0, FIELD_LIMITS.ROUTE_STOPS_MAX_COUNT);
+    const schedulePayload = {
+      busNumber,
+      routeName,
+      firstShiftEntry,
+      firstShiftExit,
+      secondShiftEntry,
+      secondShiftExit,
+      status,
+    };
+
+    const detailPayload = {
+      driverName,
+      driverContact,
+      conductorName,
+      conductorContact,
+      vehicleRegistration,
+      seatingCapacity: Number.parseInt(seatingCapacity, 10) || 40,
+      permitNumber,
+      insuranceExpiry,
+      emergencyContact,
+      operationalNotes,
+    };
 
     setSaving(true);
     try {
-      await saveBusRecord({
-        busId: existingBus?.id,
-        updatedBy: firebaseUser.uid,
-        schedule: {
-          busNumber,
-          routeName,
-          routeStops: parsedStops,
-          morningShiftActive,
-          morningPickupTime: morningShiftActive ? morningPickupTime : '',
-          morningCampusArrival: morningShiftActive ? morningCampusArrival : '',
-          afternoonShiftActive,
-          afternoonCampusDeparture: afternoonShiftActive ? afternoonCampusDeparture : '',
-          afternoonDropTime: afternoonShiftActive ? afternoonDropTime : '',
-          status,
-        },
-        detail: {
-          driverName,
-          driverContact,
-          conductorName,
-          conductorContact,
-          vehicleRegistration,
-          seatingCapacity: Number.parseInt(seatingCapacity, 10) || 40,
-          permitNumber,
-          insuranceExpiry,
-          emergencyContact,
-          operationalNotes,
-        },
-      });
+      if (isDemoMode) {
+        saveDemoBus({
+          busId: existingBus?.id,
+          updatedBy: actorUid,
+          schedule: schedulePayload,
+          detail: detailPayload,
+        });
+      } else {
+        await saveBusRecord({
+          busId: existingBus?.id,
+          updatedBy: actorUid,
+          schedule: schedulePayload,
+          detail: detailPayload,
+        });
+      }
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to save bus record.');
@@ -182,7 +210,7 @@ export function BusFormModal({ existingBus, onClose }: BusFormModalProps) {
           {/* Section 1: Public Schedule */}
           <div className="space-y-4">
             <h3 className="text-sm font-semibold text-slate-900 pb-2 border-b border-slate-200">
-              1. Route & Shift Schedule (Visible to Students & Staff)
+              1. Bus Route & Two-Shift Schedule (Visible to Students & Staff)
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -196,14 +224,14 @@ export function BusFormModal({ existingBus, onClose }: BusFormModalProps) {
                   maxLength={FIELD_LIMITS.BUS_NUMBER_MAX}
                   value={busNumber}
                   onChange={(e) => setBusNumber(e.target.value)}
-                  placeholder="BUS-101"
+                  placeholder="G-01"
                   className="w-full px-3 py-2 text-sm font-mono bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-700"
                 />
               </div>
 
-              <div className="sm:col-span-2">
+              <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Route Name *
+                  Bus Route *
                 </label>
                 <input
                   type="text"
@@ -211,29 +239,14 @@ export function BusFormModal({ existingBus, onClose }: BusFormModalProps) {
                   maxLength={FIELD_LIMITS.ROUTE_NAME_MAX}
                   value={routeName}
                   onChange={(e) => setRouteName(e.target.value)}
-                  placeholder="Vijay Nagar Square — Campus Main Gate"
-                  className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-700"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Route Stops (comma-separated, max 15)
-                </label>
-                <input
-                  type="text"
-                  value={stopsText}
-                  onChange={(e) => setStopsText(e.target.value)}
-                  placeholder="Vijay Nagar, LIG Square, Palasia, Campus Gate"
+                  placeholder="Indore to Campus"
                   className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-700"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Schedule Status
+                  Bus Status
                 </label>
                 <select
                   value={status}
@@ -249,76 +262,68 @@ export function BusFormModal({ existingBus, onClose }: BusFormModalProps) {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
               <div className="border border-slate-200 rounded-lg p-4 space-y-3">
-                <label className="flex items-center justify-between text-sm font-semibold text-slate-900 cursor-pointer">
-                  <span>Morning Shift</span>
-                  <input
-                    type="checkbox"
-                    checked={morningShiftActive}
-                    onChange={(e) => setMorningShiftActive(e.target.checked)}
-                    className="w-4 h-4 accent-blue-700"
-                  />
-                </label>
+                <p className="text-sm font-semibold text-slate-900">First Shift</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-slate-600 mb-1">First Pickup</label>
+                    <label className="block text-xs text-slate-600 mb-1">
+                      College Entry Time *
+                    </label>
                     <input
                       type="text"
-                      disabled={!morningShiftActive}
+                      required
                       maxLength={FIELD_LIMITS.TIME_MAX}
-                      value={morningPickupTime}
-                      onChange={(e) => setMorningPickupTime(e.target.value)}
-                      placeholder="07:15 AM"
-                      className="w-full px-2.5 py-1.5 text-sm font-mono bg-white disabled:bg-slate-100 border border-slate-300 rounded-md"
+                      value={firstShiftEntry}
+                      onChange={(e) => setFirstShiftEntry(e.target.value)}
+                      placeholder="08:00 AM"
+                      className="w-full px-2.5 py-1.5 text-sm font-mono bg-white border border-slate-300 rounded-md focus:outline-none focus:border-blue-700"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-slate-600 mb-1">Campus Arrival</label>
+                    <label className="block text-xs text-slate-600 mb-1">
+                      College Exit Time *
+                    </label>
                     <input
                       type="text"
-                      disabled={!morningShiftActive}
+                      required
                       maxLength={FIELD_LIMITS.TIME_MAX}
-                      value={morningCampusArrival}
-                      onChange={(e) => setMorningCampusArrival(e.target.value)}
-                      placeholder="08:20 AM"
-                      className="w-full px-2.5 py-1.5 text-sm font-mono bg-white disabled:bg-slate-100 border border-slate-300 rounded-md"
+                      value={firstShiftExit}
+                      onChange={(e) => setFirstShiftExit(e.target.value)}
+                      placeholder="02:40 PM"
+                      className="w-full px-2.5 py-1.5 text-sm font-mono bg-white border border-slate-300 rounded-md focus:outline-none focus:border-blue-700"
                     />
                   </div>
                 </div>
               </div>
 
               <div className="border border-slate-200 rounded-lg p-4 space-y-3">
-                <label className="flex items-center justify-between text-sm font-semibold text-slate-900 cursor-pointer">
-                  <span>Afternoon Shift</span>
-                  <input
-                    type="checkbox"
-                    checked={afternoonShiftActive}
-                    onChange={(e) => setAfternoonShiftActive(e.target.checked)}
-                    className="w-4 h-4 accent-blue-700"
-                  />
-                </label>
+                <p className="text-sm font-semibold text-slate-900">Second Shift</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-slate-600 mb-1">Campus Departure</label>
+                    <label className="block text-xs text-slate-600 mb-1">
+                      College Entry Time *
+                    </label>
                     <input
                       type="text"
-                      disabled={!afternoonShiftActive}
+                      required
                       maxLength={FIELD_LIMITS.TIME_MAX}
-                      value={afternoonCampusDeparture}
-                      onChange={(e) => setAfternoonCampusDeparture(e.target.value)}
-                      placeholder="04:30 PM"
-                      className="w-full px-2.5 py-1.5 text-sm font-mono bg-white disabled:bg-slate-100 border border-slate-300 rounded-md"
+                      value={secondShiftEntry}
+                      onChange={(e) => setSecondShiftEntry(e.target.value)}
+                      placeholder="10:30 AM"
+                      className="w-full px-2.5 py-1.5 text-sm font-mono bg-white border border-slate-300 rounded-md focus:outline-none focus:border-blue-700"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-slate-600 mb-1">Final Drop</label>
+                    <label className="block text-xs text-slate-600 mb-1">
+                      College Exit Time *
+                    </label>
                     <input
                       type="text"
-                      disabled={!afternoonShiftActive}
+                      required
                       maxLength={FIELD_LIMITS.TIME_MAX}
-                      value={afternoonDropTime}
-                      onChange={(e) => setAfternoonDropTime(e.target.value)}
+                      value={secondShiftExit}
+                      onChange={(e) => setSecondShiftExit(e.target.value)}
                       placeholder="05:35 PM"
-                      className="w-full px-2.5 py-1.5 text-sm font-mono bg-white disabled:bg-slate-100 border border-slate-300 rounded-md"
+                      className="w-full px-2.5 py-1.5 text-sm font-mono bg-white border border-slate-300 rounded-md focus:outline-none focus:border-blue-700"
                     />
                   </div>
                 </div>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Clock, ShieldCheck, XCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useDemo } from '../context/DemoContext';
 import { reviewFacultyRequest, subscribeAllFacultyRequests } from '../services/requestService';
 import {
   FIELD_LIMITS,
@@ -10,18 +11,24 @@ import {
 
 export function HodRequestsView() {
   const { firebaseUser, profile } = useAuth();
-  const [requests, setRequests] = useState<FacultyAccessRequest[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { isDemoMode, demoProfile, demoRequests, reviewDemoFacultyRequest } = useDemo();
+
+  const [liveRequests, setLiveRequests] = useState<FacultyAccessRequest[]>([]);
+  const [loading, setLoading] = useState(!isDemoMode);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | FacultyRequestStatus>('all');
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [busyUid, setBusyUid] = useState<string | null>(null);
 
   useEffect(() => {
+    if (isDemoMode) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const unsub = subscribeAllFacultyRequests(
       (items) => {
-        setRequests(items);
+        setLiveRequests(items);
         setLoading(false);
       },
       (err) => {
@@ -30,7 +37,9 @@ export function HodRequestsView() {
       }
     );
     return () => unsub();
-  }, []);
+  }, [isDemoMode]);
+
+  const requests = isDemoMode ? demoRequests : liveRequests;
 
   const filtered = useMemo(() => {
     if (filter === 'all') return requests;
@@ -38,17 +47,26 @@ export function HodRequestsView() {
   }, [requests, filter]);
 
   const handleDecision = async (facultyUid: string, decision: 'approved' | 'rejected') => {
-    if (!firebaseUser || !profile) return;
     setBusyUid(facultyUid);
     setError(null);
     try {
-      await reviewFacultyRequest({
-        facultyUid,
-        decision,
-        reviewerUid: firebaseUser.uid,
-        reviewerName: profile.displayName,
-        reviewNote: notes[facultyUid] ?? '',
-      });
+      if (isDemoMode) {
+        reviewDemoFacultyRequest({
+          facultyUid,
+          decision,
+          reviewerUid: demoProfile.uid,
+          reviewerName: demoProfile.displayName,
+          reviewNote: notes[facultyUid] ?? '',
+        });
+      } else if (firebaseUser && profile) {
+        await reviewFacultyRequest({
+          facultyUid,
+          decision,
+          reviewerUid: firebaseUser.uid,
+          reviewerName: profile.displayName,
+          reviewNote: notes[facultyUid] ?? '',
+        });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to update request status.');
     } finally {

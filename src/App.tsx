@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { DemoProvider, useDemo } from './context/DemoContext';
 import { BusDirectory } from './components/BusDirectory';
 import { BusFormModal } from './components/BusFormModal';
 import { FacultyAccessView } from './components/FacultyAccessView';
@@ -20,83 +21,98 @@ import type { BusSchedule } from './types/campus';
 
 function PortalRouter() {
   const { firebaseUser, authReady, profile, profileLoading } = useAuth();
+  const { isDemoMode, demoProfile, demoBuses, demoRequests } = useDemo();
+
   const [activeTab, setActiveTab] = useState<NavTab>('schedules');
-  const [buses, setBuses] = useState<BusSchedule[]>([]);
-  const [busesLoading, setBusesLoading] = useState(true);
-  const [busesError, setBusesError] = useState<string | null>(null);
-  const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
+  const [liveBuses, setLiveBuses] = useState<BusSchedule[]>([]);
+  const [liveBusesLoading, setLiveBusesLoading] = useState(true);
+  const [liveBusesError, setLiveBusesError] = useState<string | null>(null);
+  const [livePendingRequestsCount, setLivePendingRequestsCount] = useState(0);
 
   const [busModalOpen, setBusModalOpen] = useState(false);
   const [editingBus, setEditingBus] = useState<BusSchedule | null>(null);
 
+  const activeProfile = isDemoMode ? demoProfile : profile;
+
   // Reset invalid tab if role changes
   useEffect(() => {
-    if (!profile) return;
-    const r = profile.role;
+    if (!activeProfile) return;
+    const r = activeProfile.role;
     if (activeTab === 'faculty_access' && r !== 'faculty') setActiveTab('schedules');
     if (activeTab === 'hod_requests' && r !== 'hod') setActiveTab('schedules');
     if (activeTab === 'role_directory' && r !== 'hod') setActiveTab('schedules');
     if (activeTab === 'shift_manager' && r !== 'tdc' && r !== 'hod') setActiveTab('schedules');
-  }, [profile, activeTab]);
+  }, [activeProfile, activeTab]);
 
-  // Subscribe to bus schedules once authenticated with a profile
+  // Subscribe to live Firestore bus schedules only when in Live Mode with an authenticated profile
   useEffect(() => {
-    if (!authReady || !firebaseUser || !profile) {
-      setBuses([]);
-      setBusesLoading(false);
+    if (isDemoMode || !authReady || !firebaseUser || !profile) {
+      setLiveBuses([]);
+      setLiveBusesLoading(false);
       return;
     }
 
-    setBusesLoading(true);
-    setBusesError(null);
+    setLiveBusesLoading(true);
+    setLiveBusesError(null);
     const unsub = subscribeBusSchedules(
       (items) => {
-        setBuses(items);
-        setBusesLoading(false);
+        setLiveBuses(items);
+        setLiveBusesLoading(false);
       },
       (err) => {
-        setBusesError(err.message);
-        setBusesLoading(false);
+        setLiveBusesError(err.message);
+        setLiveBusesLoading(false);
       }
     );
     return () => unsub();
-  }, [authReady, firebaseUser, profile]);
+  }, [isDemoMode, authReady, firebaseUser, profile]);
 
-  // Subscribe to pending faculty requests count for HOD/Director sidebar
+  // Subscribe to pending faculty requests count for HOD/Director sidebar in Live Mode
   useEffect(() => {
-    if (!authReady || !firebaseUser || profile?.role !== 'hod') {
-      setPendingRequestsCount(0);
+    if (isDemoMode || !authReady || !firebaseUser || profile?.role !== 'hod') {
+      setLivePendingRequestsCount(0);
       return;
     }
 
     const unsub = subscribeAllFacultyRequests(
       (requests) => {
-        setPendingRequestsCount(requests.filter((r) => r.status === 'pending').length);
+        setLivePendingRequestsCount(requests.filter((r) => r.status === 'pending').length);
       },
       () => {
-        setPendingRequestsCount(0);
+        setLivePendingRequestsCount(0);
       }
     );
     return () => unsub();
-  }, [authReady, firebaseUser, profile?.role]);
+  }, [isDemoMode, authReady, firebaseUser, profile?.role]);
 
-  if (!authReady || (firebaseUser && profileLoading)) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-        <div className="bg-white border border-slate-200 rounded-xl px-6 py-5 text-sm text-slate-600">
-          Loading CAMPUS BUS CONNECT...
+  if (!isDemoMode) {
+    if (!authReady || (firebaseUser && profileLoading)) {
+      return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+          <div className="bg-white border border-slate-200 rounded-xl px-6 py-5 text-sm text-slate-600">
+            Loading CAMPUS BUS CONNECT...
+          </div>
         </div>
-      </div>
-    );
+      );
+    }
+
+    if (!firebaseUser) {
+      return <LoginPage />;
+    }
+
+    if (!profile) {
+      return <OnboardingPage />;
+    }
   }
 
-  if (!firebaseUser) {
-    return <LoginPage />;
-  }
+  if (!activeProfile) return null;
 
-  if (!profile) {
-    return <OnboardingPage />;
-  }
+  const effectiveBuses = isDemoMode ? demoBuses : liveBuses;
+  const effectiveLoading = isDemoMode ? false : liveBusesLoading;
+  const effectiveError = isDemoMode ? null : liveBusesError;
+  const effectivePendingCount = isDemoMode
+    ? demoRequests.filter((r) => r.status === 'pending').length
+    : livePendingRequestsCount;
 
   const openAddBus = () => {
     setEditingBus(null);
@@ -113,31 +129,31 @@ function PortalRouter() {
       activeTab={activeTab}
       onSelectTab={setActiveTab}
       onOpenAddBus={openAddBus}
-      pendingRequestsCount={pendingRequestsCount}
+      pendingRequestsCount={effectivePendingCount}
     >
       {activeTab === 'schedules' && (
         <BusDirectory
-          buses={buses}
-          loading={busesLoading}
-          error={busesError}
+          buses={effectiveBuses}
+          loading={effectiveLoading}
+          error={effectiveError}
           onEditBus={openEditBus}
           onOpenAddBus={openAddBus}
           onOpenFacultyAccess={() => setActiveTab('faculty_access')}
         />
       )}
 
-      {activeTab === 'faculty_access' && profile.role === 'faculty' && (
-        <FacultyAccessView buses={buses} />
+      {activeTab === 'faculty_access' && activeProfile.role === 'faculty' && (
+        <FacultyAccessView buses={effectiveBuses} />
       )}
 
-      {activeTab === 'hod_requests' && profile.role === 'hod' && <HodRequestsView />}
+      {activeTab === 'hod_requests' && activeProfile.role === 'hod' && <HodRequestsView />}
 
       {activeTab === 'shift_manager' &&
-        (profile.role === 'tdc' || profile.role === 'hod') && (
-          <ShiftManagerView buses={buses} />
+        (activeProfile.role === 'tdc' || activeProfile.role === 'hod') && (
+          <ShiftManagerView buses={effectiveBuses} />
         )}
 
-      {activeTab === 'role_directory' && profile.role === 'hod' && <RoleDirectoryView />}
+      {activeTab === 'role_directory' && activeProfile.role === 'hod' && <RoleDirectoryView />}
 
       {busModalOpen && (
         <BusFormModal
@@ -155,7 +171,9 @@ function PortalRouter() {
 export default function App() {
   return (
     <AuthProvider>
-      <PortalRouter />
+      <DemoProvider>
+        <PortalRouter />
+      </DemoProvider>
     </AuthProvider>
   );
 }

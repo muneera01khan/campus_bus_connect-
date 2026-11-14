@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Clock, Save } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useDemo } from '../context/DemoContext';
 import { updateBusShifts } from '../services/busService';
 import { FIELD_LIMITS, type BusSchedule } from '../types/campus';
 
@@ -9,16 +10,15 @@ interface ShiftManagerViewProps {
 }
 
 interface ShiftDraft {
-  morningShiftActive: boolean;
-  morningPickupTime: string;
-  morningCampusArrival: string;
-  afternoonShiftActive: boolean;
-  afternoonCampusDeparture: string;
-  afternoonDropTime: string;
+  firstShiftEntry: string;
+  firstShiftExit: string;
+  secondShiftEntry: string;
+  secondShiftExit: string;
 }
 
 export function ShiftManagerView({ buses }: ShiftManagerViewProps) {
   const { firebaseUser } = useAuth();
+  const { isDemoMode, demoProfile, updateDemoBusShifts } = useDemo();
   const [drafts, setDrafts] = useState<Record<string, ShiftDraft>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
@@ -26,12 +26,10 @@ export function ShiftManagerView({ buses }: ShiftManagerViewProps) {
 
   const getDraft = (bus: BusSchedule): ShiftDraft =>
     drafts[bus.id] ?? {
-      morningShiftActive: bus.morningShiftActive,
-      morningPickupTime: bus.morningPickupTime,
-      morningCampusArrival: bus.morningCampusArrival,
-      afternoonShiftActive: bus.afternoonShiftActive,
-      afternoonCampusDeparture: bus.afternoonCampusDeparture,
-      afternoonDropTime: bus.afternoonDropTime,
+      firstShiftEntry: bus.firstShiftEntry,
+      firstShiftExit: bus.firstShiftExit,
+      secondShiftEntry: bus.secondShiftEntry,
+      secondShiftExit: bus.secondShiftExit,
     };
 
   const updateDraft = (bus: BusSchedule, patch: Partial<ShiftDraft>) => {
@@ -43,25 +41,39 @@ export function ShiftManagerView({ buses }: ShiftManagerViewProps) {
   };
 
   const handleSave = async (bus: BusSchedule) => {
-    if (!firebaseUser) return;
+    const actorUid = isDemoMode ? demoProfile.uid : firebaseUser?.uid;
+    if (!actorUid) return;
     const draft = getDraft(bus);
-    setSavingId(bus.id);
     setError(null);
     setSavedId(null);
 
+    if (
+      !draft.firstShiftEntry.trim() ||
+      !draft.firstShiftExit.trim() ||
+      !draft.secondShiftEntry.trim() ||
+      !draft.secondShiftExit.trim()
+    ) {
+      setError('All four shift timings (Entry and Exit for both shifts) are required.');
+      return;
+    }
+
+    setSavingId(bus.id);
+
+    const payload = {
+      busId: bus.id,
+      firstShiftEntry: draft.firstShiftEntry,
+      firstShiftExit: draft.firstShiftExit,
+      secondShiftEntry: draft.secondShiftEntry,
+      secondShiftExit: draft.secondShiftExit,
+      updatedBy: actorUid,
+    };
+
     try {
-      await updateBusShifts({
-        busId: bus.id,
-        morningShiftActive: draft.morningShiftActive,
-        afternoonShiftActive: draft.afternoonShiftActive,
-        morningPickupTime: draft.morningShiftActive ? draft.morningPickupTime : '',
-        morningCampusArrival: draft.morningShiftActive ? draft.morningCampusArrival : '',
-        afternoonCampusDeparture: draft.afternoonShiftActive
-          ? draft.afternoonCampusDeparture
-          : '',
-        afternoonDropTime: draft.afternoonShiftActive ? draft.afternoonDropTime : '',
-        updatedBy: firebaseUser.uid,
-      });
+      if (isDemoMode) {
+        updateDemoBusShifts(payload);
+      } else {
+        await updateBusShifts(payload);
+      }
       setSavedId(bus.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to save shift updates.');
@@ -74,16 +86,18 @@ export function ShiftManagerView({ buses }: ShiftManagerViewProps) {
     <div className="space-y-6">
       <div className="space-y-1">
         <h2 className="font-display text-2xl font-bold text-slate-900">
-          Morning & Afternoon Shift Manager
+          First & Second Shift Manager
         </h2>
         <p className="text-sm text-slate-600">
-          Enable or disable morning and afternoon shifts and update campus arrival and departure
-          timings across the fleet.
+          Update First Shift and Second Shift college entry and exit timings across all buses.
         </p>
       </div>
 
       {error && (
-        <div role="alert" className="bg-red-50 border border-red-200 text-red-800 text-xs rounded-lg p-3">
+        <div
+          role="alert"
+          className="bg-red-50 border border-red-200 text-red-800 text-xs rounded-lg p-3"
+        >
           {error}
         </div>
       )}
@@ -130,101 +144,79 @@ export function ShiftManagerView({ buses }: ShiftManagerViewProps) {
                       className="min-h-[36px] px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-60 rounded-lg inline-flex items-center gap-1.5 cursor-pointer"
                     >
                       <Save className="w-3.5 h-3.5" />
-                      <span>{isSaving ? 'Saving...' : 'Save Shifts'}</span>
+                      <span>{isSaving ? 'Saving...' : 'Save Timings'}</span>
                     </button>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="border border-slate-200 rounded-lg p-3.5 space-y-3">
-                    <label className="flex items-center justify-between text-xs font-semibold text-slate-800 cursor-pointer">
-                      <span>Morning Shift Active</span>
-                      <input
-                        type="checkbox"
-                        checked={draft.morningShiftActive}
-                        onChange={(e) =>
-                          updateDraft(bus, { morningShiftActive: e.target.checked })
-                        }
-                        className="w-4 h-4 accent-blue-700"
-                      />
-                    </label>
+                    <p className="text-xs font-semibold text-slate-800">First Shift</p>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="block text-[11px] text-slate-500 mb-1">
-                          First Pickup
+                          College Entry Time
                         </label>
                         <input
                           type="text"
-                          disabled={!draft.morningShiftActive}
                           maxLength={FIELD_LIMITS.TIME_MAX}
-                          value={draft.morningPickupTime}
+                          value={draft.firstShiftEntry}
                           onChange={(e) =>
-                            updateDraft(bus, { morningPickupTime: e.target.value })
+                            updateDraft(bus, { firstShiftEntry: e.target.value })
                           }
-                          placeholder="07:15 AM"
-                          className="w-full px-2.5 py-1.5 text-xs font-mono bg-white disabled:bg-slate-100 border border-slate-300 rounded-md"
+                          placeholder="08:00 AM"
+                          className="w-full px-2.5 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-md focus:outline-none focus:border-blue-700"
                         />
                       </div>
                       <div>
                         <label className="block text-[11px] text-slate-500 mb-1">
-                          Campus Arrival
+                          College Exit Time
                         </label>
                         <input
                           type="text"
-                          disabled={!draft.morningShiftActive}
                           maxLength={FIELD_LIMITS.TIME_MAX}
-                          value={draft.morningCampusArrival}
+                          value={draft.firstShiftExit}
                           onChange={(e) =>
-                            updateDraft(bus, { morningCampusArrival: e.target.value })
+                            updateDraft(bus, { firstShiftExit: e.target.value })
                           }
-                          placeholder="08:20 AM"
-                          className="w-full px-2.5 py-1.5 text-xs font-mono bg-white disabled:bg-slate-100 border border-slate-300 rounded-md"
+                          placeholder="02:40 PM"
+                          className="w-full px-2.5 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-md focus:outline-none focus:border-blue-700"
                         />
                       </div>
                     </div>
                   </div>
 
                   <div className="border border-slate-200 rounded-lg p-3.5 space-y-3">
-                    <label className="flex items-center justify-between text-xs font-semibold text-slate-800 cursor-pointer">
-                      <span>Afternoon Shift Active</span>
-                      <input
-                        type="checkbox"
-                        checked={draft.afternoonShiftActive}
-                        onChange={(e) =>
-                          updateDraft(bus, { afternoonShiftActive: e.target.checked })
-                        }
-                        className="w-4 h-4 accent-blue-700"
-                      />
-                    </label>
+                    <p className="text-xs font-semibold text-slate-800">Second Shift</p>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="block text-[11px] text-slate-500 mb-1">
-                          Campus Departure
+                          College Entry Time
                         </label>
                         <input
                           type="text"
-                          disabled={!draft.afternoonShiftActive}
                           maxLength={FIELD_LIMITS.TIME_MAX}
-                          value={draft.afternoonCampusDeparture}
+                          value={draft.secondShiftEntry}
                           onChange={(e) =>
-                            updateDraft(bus, { afternoonCampusDeparture: e.target.value })
+                            updateDraft(bus, { secondShiftEntry: e.target.value })
                           }
-                          placeholder="04:30 PM"
-                          className="w-full px-2.5 py-1.5 text-xs font-mono bg-white disabled:bg-slate-100 border border-slate-300 rounded-md"
+                          placeholder="10:30 AM"
+                          className="w-full px-2.5 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-md focus:outline-none focus:border-blue-700"
                         />
                       </div>
                       <div>
-                        <label className="block text-[11px] text-slate-500 mb-1">Final Drop</label>
+                        <label className="block text-[11px] text-slate-500 mb-1">
+                          College Exit Time
+                        </label>
                         <input
                           type="text"
-                          disabled={!draft.afternoonShiftActive}
                           maxLength={FIELD_LIMITS.TIME_MAX}
-                          value={draft.afternoonDropTime}
+                          value={draft.secondShiftExit}
                           onChange={(e) =>
-                            updateDraft(bus, { afternoonDropTime: e.target.value })
+                            updateDraft(bus, { secondShiftExit: e.target.value })
                           }
                           placeholder="05:35 PM"
-                          className="w-full px-2.5 py-1.5 text-xs font-mono bg-white disabled:bg-slate-100 border border-slate-300 rounded-md"
+                          className="w-full px-2.5 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-md focus:outline-none focus:border-blue-700"
                         />
                       </div>
                     </div>

@@ -12,6 +12,8 @@ import {
   Wrench,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useDemo } from '../context/DemoContext';
+import { INITIAL_DEMO_BUSES } from '../data/demoData';
 import { deleteBusRecord } from '../services/busService';
 import type { BusSchedule } from '../types/campus';
 import { BusDetailsModal } from './BusDetailsModal';
@@ -25,7 +27,7 @@ interface BusDirectoryProps {
   onOpenFacultyAccess: () => void;
 }
 
-type ShiftFilter = 'all' | 'morning' | 'afternoon' | 'active';
+type StatusFilter = 'all' | 'active' | 'maintenance' | 'inactive';
 
 export function BusDirectory({
   buses,
@@ -36,36 +38,42 @@ export function BusDirectory({
   onOpenFacultyAccess,
 }: BusDirectoryProps) {
   const { profile, myFacultyRequest } = useAuth();
+  const { isDemoMode, demoRole, demoMyRequest, deleteDemoBus } = useDemo();
   const [search, setSearch] = useState('');
-  const [shiftFilter, setShiftFilter] = useState<ShiftFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [selectedDetailBus, setSelectedDetailBus] = useState<BusSchedule | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const role = profile?.role ?? 'student';
+  const role = isDemoMode ? demoRole : profile?.role ?? 'student';
+  const activeFacultyRequest = isDemoMode ? demoMyRequest : myFacultyRequest;
   const canManageBuses = role === 'tdc' || role === 'hod';
   const canViewRestricted =
-    canManageBuses || (role === 'faculty' && myFacultyRequest?.status === 'approved');
+    canManageBuses || (role === 'faculty' && activeFacultyRequest?.status === 'approved');
+
+  const showingLiveFallbackDemo =
+    !isDemoMode && !loading && buses.length === 0 && (role === 'student' || role === 'faculty');
+  const effectiveBuses = showingLiveFallbackDemo ? INITIAL_DEMO_BUSES : buses;
 
   const filteredBuses = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return buses.filter((bus) => {
-      if (shiftFilter === 'morning' && !bus.morningShiftActive) return false;
-      if (shiftFilter === 'afternoon' && !bus.afternoonShiftActive) return false;
-      if (shiftFilter === 'active' && bus.status !== 'active') return false;
+    return effectiveBuses.filter((bus) => {
+      if (statusFilter !== 'all' && bus.status !== statusFilter) return false;
       if (!q) return true;
       return (
-        bus.busNumber.toLowerCase().includes(q) ||
-        bus.routeName.toLowerCase().includes(q) ||
-        bus.routeStops.some((stop) => stop.toLowerCase().includes(q))
+        bus.busNumber.toLowerCase().includes(q) || bus.routeName.toLowerCase().includes(q)
       );
     });
-  }, [buses, search, shiftFilter]);
+  }, [effectiveBuses, search, statusFilter]);
 
   const handleDelete = async (busId: string) => {
     setDeleting(true);
     try {
-      await deleteBusRecord(busId);
+      if (isDemoMode) {
+        deleteDemoBus(busId);
+      } else {
+        await deleteBusRecord(busId);
+      }
       setConfirmDeleteId(null);
     } finally {
       setDeleting(false);
@@ -82,13 +90,13 @@ export function BusDirectory({
           </h2>
           <p className="text-sm text-slate-600">
             {role === 'student' &&
-              'Read-only schedule of college bus numbers, routes, morning/afternoon shifts, and campus arrival & departure times.'}
+              'Read-only schedule of bus numbers, routes, First Shift and Second Shift college entry and exit timings.'}
             {role === 'faculty' &&
               (canViewRestricted
-                ? 'Your faculty access is approved. Select View Details on any bus to inspect driver and vehicle records.'
+                ? 'Your faculty access is approved. Select Details on any bus to inspect driver and vehicle records.'
                 : 'Showing public bus schedules. Request HOD/Director approval to unlock restricted driver and vehicle details.')}
             {canManageBuses &&
-              'Add, update, or remove bus routes, shift schedules, and restricted fleet records.'}
+              'Add and update bus routes, First Shift and Second Shift college entry/exit timings, and fleet records.'}
           </p>
         </div>
 
@@ -98,14 +106,23 @@ export function BusDirectory({
             onClick={onOpenFacultyAccess}
             className="min-h-[40px] px-4 py-2 text-xs sm:text-sm font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
-            {myFacultyRequest
-              ? `Access Request: ${myFacultyRequest.status.toUpperCase()}`
+            {activeFacultyRequest
+              ? `Access Request: ${activeFacultyRequest.status.toUpperCase()}`
               : 'Request Detailed Access'}
           </button>
         )}
       </div>
 
-      {/* Search + Segmented Filter */}
+      {showingLiveFallbackDemo && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-xs text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <span>
+            <strong className="font-mono font-semibold">DEMO SAMPLE SCHEDULES:</strong> Live
+            Firestore currently has 0 buses, so sample DEMO schedules are shown below (read-only).
+          </span>
+        </div>
+      )}
+
+      {/* Search + Segmented Status Filter */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
         <div className="relative flex-1 max-w-md">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -113,7 +130,7 @@ export function BusDirectory({
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by bus number, route, or stop..."
+            placeholder="Search by bus number or route..."
             className="w-full pl-10 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-blue-700"
           />
         </div>
@@ -122,17 +139,17 @@ export function BusDirectory({
           {(
             [
               { id: 'all', label: 'All Buses' },
-              { id: 'morning', label: 'Morning Shift' },
-              { id: 'afternoon', label: 'Afternoon Shift' },
-              { id: 'active', label: 'Active Only' },
+              { id: 'active', label: 'Active' },
+              { id: 'maintenance', label: 'Maintenance' },
+              { id: 'inactive', label: 'Inactive' },
             ] as const
           ).map((tab) => (
             <button
               key={tab.id}
               type="button"
-              onClick={() => setShiftFilter(tab.id)}
+              onClick={() => setStatusFilter(tab.id)}
               className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                shiftFilter === tab.id
+                statusFilter === tab.id
                   ? 'bg-white text-slate-900'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
@@ -176,17 +193,19 @@ export function BusDirectory({
           </div>
           <div className="space-y-1">
             <h3 className="font-display text-base font-semibold text-slate-900">
-              {buses.length === 0 ? 'No bus schedules published yet' : 'No matching buses found'}
+              {effectiveBuses.length === 0
+                ? 'No bus schedules published yet'
+                : 'No matching buses found'}
             </h3>
             <p className="text-sm text-slate-500 max-w-md mx-auto">
-              {buses.length === 0
+              {effectiveBuses.length === 0
                 ? canManageBuses
-                  ? 'Add the first college bus route, morning/afternoon shift timings, and fleet details.'
+                  ? 'Add the first college bus route with First Shift and Second Shift timings.'
                   : 'Bus routes and shift schedules added by the Transport Coordinator will appear here.'
-                : 'Try clearing your search query or selecting a different shift filter.'}
+                : 'Try clearing your search query or selecting a different status filter.'}
             </p>
           </div>
-          {buses.length === 0 && canManageBuses && (
+          {effectiveBuses.length === 0 && canManageBuses && (
             <button
               type="button"
               onClick={onOpenAddBus}
@@ -207,11 +226,11 @@ export function BusDirectory({
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
-                    <th className="py-3 px-4">Bus No.</th>
-                    <th className="py-3 px-4">Route & Stops</th>
-                    <th className="py-3 px-4">Morning Shift</th>
-                    <th className="py-3 px-4">Afternoon Shift</th>
-                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4">Bus Number</th>
+                    <th className="py-3 px-4">Bus Route</th>
+                    <th className="py-3 px-4">First Shift</th>
+                    <th className="py-3 px-4">Second Shift</th>
+                    <th className="py-3 px-4">Bus Status</th>
                     {(canViewRestricted || canManageBuses) && (
                       <th className="py-3 px-4 text-right">Actions</th>
                     )}
@@ -221,43 +240,31 @@ export function BusDirectory({
                   {filteredBuses.map((bus) => (
                     <tr key={bus.id} className="hover:bg-slate-50/70 transition-colors align-top">
                       <td className="py-3.5 px-4 font-mono tabular-nums font-semibold text-slate-900 whitespace-nowrap">
-                        {bus.busNumber}
+                        <div className="flex items-center gap-2">
+                          <span>{bus.busNumber}</span>
+                          {bus.isDemo && (
+                            <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded">
+                              DEMO
+                            </span>
+                          )}
+                        </div>
                       </td>
-                      <td className="py-3.5 px-4 max-w-xs">
-                        <p className="font-medium text-slate-900">{bus.routeName}</p>
-                        {bus.routeStops.length > 0 && (
-                          <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                            {bus.routeStops.join(' · ')}
+                      <td className="py-3.5 px-4 font-medium text-slate-900">{bus.routeName}</td>
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        <div className="space-y-0.5 font-mono tabular-nums text-xs">
+                          <p className="text-slate-900 font-medium">
+                            Entry: {bus.firstShiftEntry || '—'}
                           </p>
-                        )}
+                          <p className="text-slate-500">Exit: {bus.firstShiftExit || '—'}</p>
+                        </div>
                       </td>
                       <td className="py-3.5 px-4 whitespace-nowrap">
-                        {bus.morningShiftActive ? (
-                          <div className="space-y-0.5 font-mono tabular-nums text-xs">
-                            <p className="text-slate-900 font-medium">
-                              Pickup: {bus.morningPickupTime || '—'}
-                            </p>
-                            <p className="text-slate-500">
-                              Campus Arr: {bus.morningCampusArrival || '—'}
-                            </p>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-slate-400">Off shift</span>
-                        )}
-                      </td>
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        {bus.afternoonShiftActive ? (
-                          <div className="space-y-0.5 font-mono tabular-nums text-xs">
-                            <p className="text-slate-900 font-medium">
-                              Campus Dep: {bus.afternoonCampusDeparture || '—'}
-                            </p>
-                            <p className="text-slate-500">
-                              Drop: {bus.afternoonDropTime || '—'}
-                            </p>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-slate-400">Off shift</span>
-                        )}
+                        <div className="space-y-0.5 font-mono tabular-nums text-xs">
+                          <p className="text-slate-900 font-medium">
+                            Entry: {bus.secondShiftEntry || '—'}
+                          </p>
+                          <p className="text-slate-500">Exit: {bus.secondShiftExit || '—'}</p>
+                        </div>
                       </td>
                       <td className="py-3.5 px-4 whitespace-nowrap">
                         <StatusIndicator status={bus.status} />
@@ -334,35 +341,38 @@ export function BusDirectory({
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-mono tabular-nums text-sm font-bold text-slate-900">
-                      {bus.busNumber}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-mono tabular-nums text-sm font-bold text-slate-900">
+                        {bus.busNumber}
+                      </p>
+                      {bus.isDemo && (
+                        <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded">
+                          DEMO
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm font-medium text-slate-800 mt-0.5">{bus.routeName}</p>
                   </div>
                   <StatusIndicator status={bus.status} />
                 </div>
 
-                {bus.routeStops.length > 0 && (
-                  <p className="text-xs text-slate-500 leading-relaxed">
-                    {bus.routeStops.join(' · ')}
-                  </p>
-                )}
-
                 <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100 text-xs">
                   <div>
-                    <p className="text-slate-500 font-medium">Morning Shift</p>
+                    <p className="text-slate-500 font-medium">First Shift</p>
                     <p className="font-mono tabular-nums text-slate-900 mt-0.5">
-                      {bus.morningShiftActive
-                        ? `${bus.morningPickupTime || '—'} → ${bus.morningCampusArrival || '—'}`
-                        : 'Off shift'}
+                      Entry: {bus.firstShiftEntry || '—'}
+                    </p>
+                    <p className="font-mono tabular-nums text-slate-500">
+                      Exit: {bus.firstShiftExit || '—'}
                     </p>
                   </div>
                   <div>
-                    <p className="text-slate-500 font-medium">Afternoon Shift</p>
+                    <p className="text-slate-500 font-medium">Second Shift</p>
                     <p className="font-mono tabular-nums text-slate-900 mt-0.5">
-                      {bus.afternoonShiftActive
-                        ? `${bus.afternoonCampusDeparture || '—'} → ${bus.afternoonDropTime || '—'}`
-                        : 'Off shift'}
+                      Entry: {bus.secondShiftEntry || '—'}
+                    </p>
+                    <p className="font-mono tabular-nums text-slate-500">
+                      Exit: {bus.secondShiftExit || '—'}
                     </p>
                   </div>
                 </div>
@@ -397,7 +407,7 @@ export function BusDirectory({
         </>
       )}
 
-      {role === 'faculty' && !canViewRestricted && buses.length > 0 && (
+      {role === 'faculty' && !canViewRestricted && effectiveBuses.length > 0 && (
         <div className="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 text-sm text-slate-700">
             <Lock className="w-4 h-4 text-slate-500 shrink-0" />
