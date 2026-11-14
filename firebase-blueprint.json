@@ -55,9 +55,30 @@
       },
       "required": ["uid", "email", "displayName", "role", "department", "identifier", "createdAt", "updatedAt"]
     },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Server-managed administrator UID allowlist created only via Firebase Console or Admin SDK.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the authorized administrator."
+        },
+        "note": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 160,
+          "description": "Optional administrative note."
+        }
+      },
+      "required": ["uid"]
+    },
     "RoleAssignment": {
       "title": "RoleAssignment",
-      "description": "Pre-approved role assignment keyed by lowercase email address, managed by HOD / Director.",
+      "description": "Pre-approved role assignment keyed by lowercase email address, managed by an authorized administrator (HOD / Director).",
       "type": "object",
       "properties": {
         "email": {
@@ -351,6 +372,10 @@
     }
   },
   "firestore": {
+    "/admins/{adminUid}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Server/Console-managed administrator UID allowlist (client writes forbidden)."
+    },
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/UserProfile" },
       "description": "User profile and assigned role document."

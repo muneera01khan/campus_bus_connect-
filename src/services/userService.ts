@@ -19,10 +19,18 @@ import {
   type UserRole,
 } from '../types/campus';
 
-export const BOOTSTRAPPED_DIRECTOR_EMAIL = 'muneerakhan251416@acropolis.in';
-
 function sanitizeText(value: string, maxLength: number): string {
   return value.trim().slice(0, maxLength);
+}
+
+export async function checkIsAdminRecord(uid: string): Promise<boolean> {
+  const path = `admins/${uid}`;
+  try {
+    const snap = await getDoc(doc(db, 'admins', uid));
+    return snap.exists();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+  }
 }
 
 export function subscribeUserProfile(

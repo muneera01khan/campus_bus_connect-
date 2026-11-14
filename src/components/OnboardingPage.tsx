@@ -4,30 +4,27 @@ import { useAuth } from '../context/AuthContext';
 import { FIELD_LIMITS, ROLE_LABELS, type UserRole } from '../types/campus';
 
 export function OnboardingPage() {
-  const { firebaseUser, preassigned, isBootstrappedDirector, completeOnboarding, logout } =
-    useAuth();
+  const { firebaseUser, preassigned, isAdminRecord, completeOnboarding, logout } = useAuth();
 
-  const lockedRole: UserRole | null = isBootstrappedDirector
-    ? 'hod'
-    : preassigned
-      ? preassigned.role
-      : null;
+  const resolvedRole: UserRole = preassigned?.role
+    ? preassigned.role
+    : isAdminRecord
+      ? 'hod'
+      : 'student';
+
+  const isAdminAssigned = Boolean(preassigned) || isAdminRecord;
 
   const [displayName, setDisplayName] = useState(firebaseUser?.displayName ?? '');
-  const [role, setRole] = useState<UserRole>(lockedRole ?? 'student');
   const [department, setDepartment] = useState(preassigned?.department ?? '');
   const [identifier, setIdentifier] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (lockedRole) {
-      setRole(lockedRole);
-    }
     if (preassigned?.department) {
       setDepartment(preassigned.department);
     }
-  }, [lockedRole, preassigned?.department]);
+  }, [preassigned?.department]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,7 +42,6 @@ export function OnboardingPage() {
     try {
       await completeOnboarding({
         displayName,
-        role: lockedRole ?? role,
         department,
         identifier,
       });
@@ -119,38 +115,18 @@ export function OnboardingPage() {
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Portal Role
+                Assigned Portal Role
               </label>
-              {lockedRole ? (
-                <div className="px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 font-medium flex items-center justify-between">
-                  <span>{ROLE_LABELS[lockedRole]}</span>
-                  <span className="text-xs text-blue-700 font-normal">
-                    {isBootstrappedDirector ? 'Director Account' : 'Pre-assigned by HOD'}
-                  </span>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  {(['student', 'faculty'] as const).map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => setRole(option)}
-                      className={`px-4 py-2.5 text-sm font-medium rounded-lg border text-left transition-colors cursor-pointer ${
-                        role === option
-                          ? 'bg-blue-50 border-blue-700 text-blue-900'
-                          : 'bg-white border-slate-300 text-slate-700 hover:border-slate-400'
-                      }`}
-                    >
-                      {ROLE_LABELS[option]}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {!lockedRole && (
-                <p className="text-xs text-slate-500 mt-1.5">
-                  TDC and HOD / Director roles are granted by institutional role assignment.
-                </p>
-              )}
+              <div className="px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 font-medium flex items-center justify-between gap-3">
+                <span>{ROLE_LABELS[resolvedRole]}</span>
+                <span className="text-xs text-blue-700 font-normal whitespace-nowrap">
+                  {isAdminAssigned ? 'Assigned by Administrator' : 'Default Role'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1.5">
+                New accounts receive the Student role by default. Faculty, TDC, and HOD / Director
+                roles must be assigned by an authorized administrator.
+              </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -171,14 +147,14 @@ export function OnboardingPage() {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  {role === 'student' ? 'Roll Number' : 'Employee / Staff ID'}
+                  {resolvedRole === 'student' ? 'Roll Number' : 'Employee / Staff ID'}
                 </label>
                 <input
                   type="text"
                   maxLength={FIELD_LIMITS.IDENTIFIER_MAX}
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
-                  placeholder={role === 'student' ? 'e.g., 0827CS221045' : 'e.g., FAC-204'}
+                  placeholder={resolvedRole === 'student' ? 'e.g., 0827CS221045' : 'e.g., FAC-204'}
                   className="w-full px-3.5 py-2.5 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700/20 focus:border-blue-700"
                 />
               </div>

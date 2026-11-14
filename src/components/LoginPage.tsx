@@ -143,7 +143,10 @@ export function LoginPage() {
               </div>
 
               <div className="pt-4 border-t border-slate-100 text-xs text-slate-500 space-y-1">
-                <p>First-time users will select their Student or Faculty role after sign-in.</p>
+                <p>
+                  New accounts receive the default Student role unless assigned another role by an
+                  administrator.
+                </p>
                 <p>Demo Mode uses isolated sample data and never alters Firebase records.</p>
               </div>
             </div>

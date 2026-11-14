@@ -38,8 +38,7 @@ export function Layout({
   pendingRequestsCount = 0,
   children,
 }: LayoutProps) {
-  const { firebaseUser, profile, logout, isBootstrappedDirector, switchDirectorTestRole } =
-    useAuth();
+  const { firebaseUser, profile, logout } = useAuth();
   const {
     isDemoMode,
     demoRole,
@@ -51,7 +50,6 @@ export function Layout({
   } = useDemo();
 
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [switchingRole, setSwitchingRole] = useState(false);
 
   const activeProfile = isDemoMode ? demoProfile : profile;
   if (!activeProfile) return null;
@@ -96,16 +94,6 @@ export function Layout({
   const navItems = allNavItems.filter((item) => item.visible);
 
   const activeLabel = navItems.find((i) => i.id === activeTab)?.label ?? 'Dashboard';
-
-  const handleDirectorRoleSwitch = async (nextRole: UserRole) => {
-    setSwitchingRole(true);
-    try {
-      await switchDirectorTestRole(nextRole);
-      onSelectTab('schedules');
-    } finally {
-      setSwitchingRole(false);
-    }
-  };
 
   const handleDemoRoleSwitch = (nextRole: UserRole) => {
     setDemoRole(nextRole);
@@ -169,29 +157,6 @@ export function Layout({
             {activeProfile.department ? ` · ${activeProfile.department}` : ''}
           </p>
         </div>
-
-        {!isDemoMode && isBootstrappedDirector && (
-          <div className="pt-2 border-t border-slate-100 space-y-1.5">
-            <label
-              htmlFor="director-role-switch"
-              className="block text-[11px] font-medium text-slate-500"
-            >
-              Active Role (Director Test Switch)
-            </label>
-            <select
-              id="director-role-switch"
-              value={activeProfile.role}
-              disabled={switchingRole}
-              onChange={(e) => handleDirectorRoleSwitch(e.target.value as UserRole)}
-              className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-md text-slate-800 focus:outline-none focus:border-blue-700"
-            >
-              <option value="hod">HOD / Director</option>
-              <option value="tdc">TDC</option>
-              <option value="faculty">Faculty</option>
-              <option value="student">Student</option>
-            </select>
-          </div>
-        )}
 
         {!isDemoMode ? (
           <div className="space-y-2">

@@ -49,12 +49,17 @@ export function RoleDirectoryView() {
 
     setSaving(true);
     try {
+      const normalizedEmail = email.trim().toLowerCase();
       await saveRoleAssignment({
-        email,
+        email: normalizedEmail,
         role,
         department,
         assignedBy: firebaseUser.uid,
       });
+      const existingUser = users.find((u) => u.email.toLowerCase() === normalizedEmail);
+      if (existingUser && existingUser.role !== role) {
+        await updateUserRole(existingUser.uid, role);
+      }
       setEmail('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to save role assignment.');
@@ -165,7 +170,7 @@ export function RoleDirectoryView() {
               maxLength={FIELD_LIMITS.EMAIL_MAX}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="tdc.office@acropolis.in"
+              placeholder="coordinator@college.edu"
               className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-700"
             />
           </div>

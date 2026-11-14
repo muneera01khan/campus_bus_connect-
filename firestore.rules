@@ -35,8 +35,8 @@ service cloud.firestore {
       return key is string && key.size() >= 3 && key.size() <= 160 && key.matches('^[a-z0-9_.+\\-@]+$');
     }
 
-    function isBootstrappedDirector() {
-      return isEmailVerified() && request.auth.token.email == 'muneerakhan251416@acropolis.in';
+    function isAdminDoc() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
     function hasUserProfile() {
@@ -47,17 +47,23 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
     }
 
+    function hasValidPreassignedRole(requestedRole) {
+      return request.auth.token.email is string &&
+        exists(/databases/$(database)/documents/role_assignments/$(request.auth.token.email.lower())) &&
+        get(/databases/$(database)/documents/role_assignments/$(request.auth.token.email.lower())).data.role == requestedRole;
+    }
+
     function isHod() {
       return isEmailVerified() && (
-        (hasUserProfile() && currentUserRole() == 'hod') ||
-        (!hasUserProfile() && isBootstrappedDirector())
+        isAdminDoc() ||
+        (hasUserProfile() && currentUserRole() == 'hod')
       );
     }
 
     function isTdcOrHod() {
       return isEmailVerified() && (
-        (hasUserProfile() && currentUserRole() in ['tdc', 'hod']) ||
-        (!hasUserProfile() && isBootstrappedDirector())
+        isAdminDoc() ||
+        (hasUserProfile() && currentUserRole() in ['tdc', 'hod'])
       );
     }
 
@@ -192,6 +198,15 @@ service cloud.firestore {
     }
 
     // ------------------------------------------------------------------
+    // 0. Server/Console-Managed Admins Allowlist (/admins/{adminUid})
+    // ------------------------------------------------------------------
+    match /admins/{adminUid} {
+      allow get: if isSignedIn() && isValidId(adminUid) && request.auth.uid == adminUid;
+      allow list: if false;
+      allow write: if false;
+    }
+
+    // ------------------------------------------------------------------
     // 1. Users Collection (PII isolated to Owner + HOD)
     // ------------------------------------------------------------------
     match /users/{userId} {
@@ -207,12 +222,9 @@ service cloud.firestore {
         incoming().createdAt == request.time &&
         incoming().updatedAt == request.time &&
         (
-          incoming().role in ['student', 'faculty'] ||
-          isBootstrappedDirector() ||
-          (
-            exists(/databases/$(database)/documents/role_assignments/$(request.auth.token.email.lower())) &&
-            get(/databases/$(database)/documents/role_assignments/$(request.auth.token.email.lower())).data.role == incoming().role
-          )
+          incoming().role == 'student' ||
+          hasValidPreassignedRole(incoming().role) ||
+          (isAdminDoc() && incoming().role == 'hod')
         );
 
       allow update: if isEmailVerified() &&
@@ -224,7 +236,7 @@ service cloud.firestore {
         incoming().updatedAt == request.time &&
         (
           (
-            (isHod() || isBootstrappedDirector()) &&
+            isHod() &&
             incoming().diff(existing()).affectedKeys().hasOnly(['role', 'department', 'identifier', 'displayName', 'updatedAt'])
           ) ||
           (
@@ -238,22 +250,23 @@ service cloud.firestore {
     }
 
     // ------------------------------------------------------------------
-    // 2. Role Assignments (HOD / Director managed pre-approvals)
+    // 2. Role Assignments (HOD / Administrator managed pre-approvals)
     // ------------------------------------------------------------------
     match /role_assignments/{emailKey} {
       allow get: if isEmailVerified() && isValidEmailKey(emailKey) && (
-        emailKey == request.auth.token.email.lower() || isHod() || isBootstrappedDirector()
+        (request.auth.token.email is string && emailKey == request.auth.token.email.lower()) ||
+        isHod()
       );
-      allow list: if isHod() || isBootstrappedDirector();
+      allow list: if isHod();
 
-      allow create: if (isHod() || isBootstrappedDirector()) &&
+      allow create: if isHod() &&
         isValidEmailKey(emailKey) &&
         isValidRoleAssignment(incoming(), emailKey) &&
         incoming().assignedBy == request.auth.uid &&
         incoming().createdAt == request.time &&
         incoming().updatedAt == request.time;
 
-      allow update: if (isHod() || isBootstrappedDirector()) &&
+      allow update: if isHod() &&
         isValidEmailKey(emailKey) &&
         isValidRoleAssignment(incoming(), emailKey) &&
         incoming().email == existing().email &&
@@ -262,7 +275,7 @@ service cloud.firestore {
         incoming().updatedAt == request.time &&
         incoming().diff(existing()).affectedKeys().hasOnly(['role', 'department', 'assignedBy', 'updatedAt']);
 
-      allow delete: if (isHod() || isBootstrappedDirector()) && isValidEmailKey(emailKey);
+      allow delete: if isHod() && isValidEmailKey(emailKey);
     }
 
     // ------------------------------------------------------------------

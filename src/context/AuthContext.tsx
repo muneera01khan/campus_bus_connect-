@@ -2,11 +2,10 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
 import {
-  BOOTSTRAPPED_DIRECTOR_EMAIL,
+  checkIsAdminRecord,
   createUserProfile,
   getPreassignedRole,
   subscribeUserProfile,
-  updateUserRole,
 } from '../services/userService';
 import { subscribeMyFacultyRequest } from '../services/requestService';
 import type {
@@ -22,18 +21,16 @@ interface AuthContextValue {
   profile: UserProfile | null;
   profileLoading: boolean;
   preassigned: RoleAssignment | null;
+  isAdminRecord: boolean;
   myFacultyRequest: FacultyAccessRequest | null;
   authError: string | null;
-  isBootstrappedDirector: boolean;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   completeOnboarding: (params: {
     displayName: string;
-    role: UserRole;
     department: string;
     identifier: string;
   }) => Promise<void>;
-  switchDirectorTestRole: (role: UserRole) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -44,12 +41,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [preassigned, setPreassigned] = useState<RoleAssignment | null>(null);
+  const [isAdminRecord, setIsAdminRecord] = useState(false);
+  const [roleLookupReady, setRoleLookupReady] = useState(false);
   const [myFacultyRequest, setMyFacultyRequest] = useState<FacultyAccessRequest | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
-
-  const isBootstrappedDirector =
-    Boolean(firebaseUser?.emailVerified) &&
-    firebaseUser?.email?.toLowerCase() === BOOTSTRAPPED_DIRECTOR_EMAIL;
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -58,6 +53,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!user) {
         setProfile(null);
         setPreassigned(null);
+        setIsAdminRecord(false);
+        setRoleLookupReady(false);
         setMyFacultyRequest(null);
         setProfileLoading(false);
       }
@@ -69,18 +66,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!authReady || !firebaseUser) return;
 
     setProfileLoading(true);
+    setRoleLookupReady(false);
     setAuthError(null);
     let active = true;
 
-    if (firebaseUser.email) {
-      getPreassignedRole(firebaseUser.email)
-        .then((assignment) => {
-          if (active) setPreassigned(assignment);
-        })
-        .catch(() => {
-          if (active) setPreassigned(null);
-        });
-    }
+    const preassignPromise = firebaseUser.email
+      ? getPreassignedRole(firebaseUser.email).catch(() => null)
+      : Promise.resolve(null);
+    const adminPromise = checkIsAdminRecord(firebaseUser.uid).catch(() => false);
+
+    Promise.all([preassignPromise, adminPromise]).then(([assignment, adminExists]) => {
+      if (!active) return;
+      setPreassigned(assignment);
+      setIsAdminRecord(adminExists);
+      setRoleLookupReady(true);
+    });
 
     const unsubProfile = subscribeUserProfile(
       firebaseUser.uid,
@@ -136,43 +136,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const completeOnboarding = async (params: {
     displayName: string;
-    role: UserRole;
     department: string;
     identifier: string;
   }) => {
     if (!firebaseUser?.email) {
       throw new Error('Verified Google email is required to register.');
     }
+
+    // Roles cannot be self-elevated: new users default to 'student' unless
+    // explicitly pre-assigned in /role_assignments or /admins in Firestore.
+    const verifiedRole: UserRole = preassigned?.role
+      ? preassigned.role
+      : isAdminRecord
+        ? 'hod'
+        : 'student';
+
     await createUserProfile({
       uid: firebaseUser.uid,
       email: firebaseUser.email,
       displayName: params.displayName,
-      role: params.role,
+      role: verifiedRole,
       department: params.department,
       identifier: params.identifier,
     });
   };
 
-  const switchDirectorTestRole = async (role: UserRole) => {
-    if (!firebaseUser || !isBootstrappedDirector) return;
-    await updateUserRole(firebaseUser.uid, role);
-  };
+  const effectiveProfile: UserProfile | null =
+    profile && isAdminRecord && profile.role !== 'hod'
+      ? { ...profile, role: 'hod' }
+      : profile;
 
   return (
     <AuthContext.Provider
       value={{
         firebaseUser,
         authReady,
-        profile,
-        profileLoading,
+        profile: effectiveProfile,
+        profileLoading: profileLoading || (Boolean(firebaseUser) && !roleLookupReady),
         preassigned,
+        isAdminRecord,
         myFacultyRequest,
         authError,
-        isBootstrappedDirector,
         loginWithGoogle,
         logout,
         completeOnboarding,
-        switchDirectorTestRole,
       }}
     >
       {children}
